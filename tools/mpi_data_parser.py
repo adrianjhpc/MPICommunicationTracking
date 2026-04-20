@@ -15,9 +15,32 @@ MESSAGE_TYPES = {
     31: "MPI_SCATTER",   32: "MPI_ALLGATHER"
 }
 
-def parse_mpic_file(filepath):
+def load_hardware_map(filepath):
+    """Flattens the hardware map into a quick lookup dictionary."""
     if not os.path.exists(filepath):
-        print(f"Error: File '{filepath}' not found.")
+        return {}
+    
+    with open(filepath, 'r') as f:
+        hw = json.load(f)
+        
+    lookup = {}
+    for cab in hw.get("cabinets", []):
+        for rack in cab.get("racks", []):
+            for node in rack.get("nodes", []):
+                # Calculate absolute 3D position
+                # Assuming slots are stacked vertically (Y axis), 10 units apart
+                lookup[node["hostname"]] = {
+                    "cab_id": cab["id"],
+                    "rack_id": rack["id"],
+                    "x": cab["x"] + rack["x_offset"],
+                    "y": node["slot"] * 12, # Height multiplier
+                    "z": cab["z"] + rack["z_offset"]
+                }
+    return lookup
+
+def parse_mpic_file(mpic_filepath, hw_filepath=None):
+    if not os.path.exists(mpi_filepath):
+        print(f"Error: File '{mpic_filepath}' not found.")
         sys.exit(1)
 
     # Define struct formats based on standard C sizes (i=4 bytes, d=8 bytes, s=char)
@@ -36,7 +59,9 @@ def parse_mpic_file(filepath):
         "timeline": []
     }
 
-    with open(filepath, 'rb') as f:
+    hw_lookup = load_hardware_map(hw_filepath) if hw_filepath else {}
+
+    with open(mpic_filepath, 'rb') as f:
         # Read Total Processes (my_size)
         my_size_bytes = f.read(4)
         if not my_size_bytes:
@@ -49,14 +74,20 @@ def parse_mpic_file(filepath):
         for _ in range(data["metadata"]["total_ranks"]):
             proc_bytes = f.read(process_info_size)
             rank, pid, core, chip, hostname_b = struct.unpack(process_info_fmt, proc_bytes)
+            hostname = hostname_b.decode('utf-8', errors='ignore').rstrip('\x00')
+            
+            # Default to a random scatter if hardware map doesn't exist
+            hw_info = hw_lookup.get(hostname, {"x": rank*15, "y": 0, "z": 0})
             
             data["topology"].append({
                 "rank": rank,
                 "pid": pid,
                 "core": core,
                 "chip": chip,
-                # Decode bytes to string and strip null characters
-                "hostname": hostname_b.decode('utf-8', errors='ignore').rstrip('\x00')
+                "hostname": hostname,
+                "x": hw_info["x"],
+                "y": hw_info["y"],
+                "z": hw_info["z"]
             })
 
         # Read Communication Data per Rank
@@ -128,8 +159,10 @@ def parse_mpic_file(filepath):
     # Sort all events chronologically so the visualizer reads them in exact order
     data["timeline"].sort(key=lambda x: x["time"])
 
+    
+
     # Export to JSON
-    output_filename = filepath.replace(".mpic", "_parsed.json")
+    output_filename = mpic_filepath.replace(".mpic", "_parsed.json")
     with open(output_filename, 'w') as out_f:
         json.dump(data, out_f, indent=2)
     
@@ -138,6 +171,7 @@ def parse_mpic_file(filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python parse_mpic.py <filename.mpic>")
+        print("Usage: python parse_mpic.py <filename.mpic> [hardware_map.json]")
     else:
-        parse_mpic_file(sys.argv[1])
+        hw_file = sys.argv[2] if len(sys.argv) > 2 else None
+        parse_mpic_file(sys.argv[1], hw_file)

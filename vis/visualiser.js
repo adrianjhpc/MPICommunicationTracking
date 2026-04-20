@@ -1,37 +1,72 @@
 // Global State
 let parsedData = null;
-let simulation = null;
-let nodeMap = new Map(); // Maps rank -> D3 node object
-let svg, gContainer;
+let nodeMap = new Map();
 
 // Playback State
 let isPlaying = false;
 let currentTime = 0;
 let maxTime = 0;
 let animationFrameId = null;
-
-// The amount of time a message stays visible on screen (adjust based on your dataset)
 const TIME_WINDOW = 0.05; 
 
+// Three.js Core Variables
+let scene, camera, renderer, controls;
+let linesGroup;
+
 document.addEventListener("DOMContentLoaded", () => {
-    // 1. Setup SVG and Zoom/Pan
-    svg = d3.select("#visCanvas");
-    gContainer = svg.append("g"); // Everything goes inside here so it scales together
-
-    const zoom = d3.zoom()
-        .scaleExtent([0.1, 10])
-        .on("zoom", (event) => {
-            gContainer.attr("transform", event.transform);
-        });
-    svg.call(zoom);
-
-    // 2. Setup Event Listeners
+    initThreeJS();
     document.getElementById("profileLoader").addEventListener("change", handleFileUpload);
     document.getElementById("timeSlider").addEventListener("input", handleManualSeek);
     document.getElementById("btn-play").addEventListener("click", togglePlayback);
 });
 
-// --- Data Loading ---
+function initThreeJS() {
+    const container = document.getElementById('visCanvas');
+    
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d1117);
+
+    // Camera setup
+    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 1, 1000);
+    camera.position.set(0, 50, 150);
+
+    // Renderer setup
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    // Controls setup (allows dragging to rotate, scrolling to zoom)
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0x58a6ff, 1);
+    pointLight.position.set(50, 100, 50);
+    scene.add(pointLight);
+
+    // Group to hold active communication lines
+    linesGroup = new THREE.Group();
+    scene.add(linesGroup);
+
+    // Start render loop
+    const animate = function () {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    };
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+}
+
 function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -42,7 +77,6 @@ function handleFileUpload(event) {
             parsedData = JSON.parse(e.target.result);
             initDashboard();
         } catch (error) {
-            alert("Error parsing JSON file. Is it a valid .mpic_parsed profile?");
             console.error(error);
         }
     };
@@ -50,78 +84,48 @@ function handleFileUpload(event) {
 }
 
 function initDashboard() {
-    // Reset state
     pausePlayback();
-    gContainer.selectAll("*").remove();
     nodeMap.clear();
+
+    // Clear existing nodes and lines from the scene
+    const objectsToRemove = [];
+    scene.traverse(child => {
+        if (child.name === "mpiNode" || child.name === "cabinetBox") {
+            objectsToRemove.push(child);
+        }
+    });
+    objectsToRemove.forEach(obj => scene.remove(obj));
+    clearLines();
 
     const timeline = parsedData.timeline;
     const topology = parsedData.topology;
 
-    // Update Stats UI
     maxTime = timeline.length > 0 ? timeline[timeline.length - 1].time : 0;
-    document.getElementById("stat-ranks").textContent = topology.length;
-    document.getElementById("stat-events").textContent = timeline.length;
-    document.getElementById("stat-duration").textContent = maxTime.toFixed(3);
     
-    // Enable Controls
-    const slider = document.getElementById("timeSlider");
-    slider.max = maxTime;
-    slider.disabled = false;
+    document.getElementById("timeSlider").max = maxTime;
+    document.getElementById("timeSlider").disabled = false;
     document.getElementById("btn-play").disabled = false;
 
-    buildNetworkTopology(topology);
+    buildHardwareTopology(topology);
     seekToTime(0);
 }
 
-// --- Topology & Physics ---
-function buildNetworkTopology(nodesData) {
-    const width = document.getElementById("canvas-container").clientWidth;
-    const height = document.getElementById("canvas-container").clientHeight;
+function buildHardwareTopology(nodesData) {
+    const nodeGeometry = new THREE.BoxGeometry(8, 8, 8);
+    const nodeMaterial = new THREE.MeshPhongMaterial({ color: 0x8b949e, emissive: 0x222222 });
 
-    // We create a force simulation just for the nodes to spread them out beautifully
-    simulation = d3.forceSimulation(nodesData)
-        .force("charge", d3.forceManyBody().strength(-400)) // Repel each other
-        .force("center", d3.forceCenter(width / 2, height / 2)) // Pull to center
-        .force("collide", d3.forceCollide().radius(30)); // Don't overlap
-
-    // Draw the Links Group (Behind nodes)
-    gContainer.append("g").attr("class", "links-layer");
-
-    // Draw the Nodes Group
-    const nodeGroup = gContainer.append("g")
-        .selectAll("g")
-        .data(nodesData)
-        .enter().append("g")
-        .call(d3.drag() // Allow user to drag nodes manually
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended));
-
-    // Draw circles for nodes
-    nodeGroup.append("circle")
-        .attr("class", "node")
-        .attr("r", 15)
-        .on("mouseenter", (e, d) => showInspector(`Rank: ${d.rank}<br>Hostname: ${d.hostname}<br>PID: ${d.pid}<br>Core/Chip: ${d.core}/${d.chip}`))
-        .on("mouseleave", () => showInspector("Hover over a node or active communication link to see details."));
-
-    // Draw Rank ID labels inside circles
-    nodeGroup.append("text")
-        .attr("class", "node-label")
-        .text(d => d.rank);
-
-    // Map the simulated nodes to our map so the links can find their X/Y coords fast
-    nodesData.forEach(n => nodeMap.set(n.rank, n));
-
-    // Update positions on every physics tick
-    simulation.on("tick", () => {
-        nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
-        // If physics is running while timeline is playing, update link positions too
-        updateActiveLinksPosition();
+    nodesData.forEach(d => {
+        const mesh = new THREE.Mesh(nodeGeometry, nodeMaterial);
+        mesh.position.set(d.x, d.y, d.z);
+        mesh.name = "mpiNode";
+        
+        scene.add(mesh);
+        
+        // Save to map for fast line drawing later
+        nodeMap.set(d.rank, { x: d.x, y: d.y, z: d.z, mesh: mesh });
     });
 }
 
-// --- Timeline & Animation ---
 function handleManualSeek(event) {
     pausePlayback();
     seekToTime(parseFloat(event.target.value));
@@ -135,50 +139,58 @@ function seekToTime(time) {
 }
 
 function renderActiveCommunications() {
-    if (!parsedData || !parsedData.timeline) return;
+    clearLines();
 
-    // Find messages that happen within our current TIME_WINDOW
     const activeEvents = parsedData.timeline.filter(d => 
         d.time <= currentTime && d.time >= (currentTime - TIME_WINDOW)
-        // Skip self-communications (like Waits/Barriers) for the graph drawing
         && d.sender !== d.receiver 
     );
 
-    const linksLayer = gContainer.select(".links-layer");
-    
-    // Bind data to lines based on unique event_id
-    const linkSelection = linksLayer.selectAll("line")
-        .data(activeEvents, d => d.event_id + "-" + d.category);
+    const material = new THREE.LineBasicMaterial({ 
+        color: 0xff7b72, 
+        transparent: true, 
+        opacity: 0.8,
+        linewidth: 2 // Note: WebGL standard limits lines to 1px wide on many systems
+    });
 
-    // ENTER: New messages arriving in the window
-    linkSelection.enter().append("line")
-        .attr("class", "link")
-        .attr("stroke-width", d => Math.max(2, Math.min(10, d.bytes / 1024))) // Scale thickness based on bytes (2px to 10px)
-        .on("mouseenter", (e, d) => showInspector(`<b>${d.call}</b><br>From: Rank ${d.sender}<br>To: Rank ${d.receiver}<br>Bytes: ${d.bytes}<br>Time: ${d.time.toFixed(4)}s`))
-        .on("mouseleave", () => showInspector("Hover over a node or active communication link to see details."))
-        .merge(linkSelection) // UPDATE: Existing messages
-        .attr("x1", d => nodeMap.has(d.sender) ? nodeMap.get(d.sender).x : 0)
-        .attr("y1", d => nodeMap.has(d.sender) ? nodeMap.get(d.sender).y : 0)
-        .attr("x2", d => nodeMap.has(d.receiver) ? nodeMap.get(d.receiver).x : 0)
-        .attr("y2", d => nodeMap.has(d.receiver) ? nodeMap.get(d.receiver).y : 0);
+    activeEvents.forEach(event => {
+        const sender = nodeMap.get(event.sender);
+        const receiver = nodeMap.get(event.receiver);
 
-    // EXIT: Messages falling out of the time window
-    linkSelection.exit().remove();
+        if (sender && receiver) {
+            const points = [];
+            points.push(new THREE.Vector3(sender.x, sender.y, sender.z));
+            points.push(new THREE.Vector3(receiver.x, receiver.y, receiver.z));
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, material);
+            linesGroup.add(line);
+            
+            // Briefly highlight the sender and receiver nodes
+            sender.mesh.material.emissive.setHex(0x58a6ff);
+            receiver.mesh.material.emissive.setHex(0x2ea043);
+        }
+    });
+
+    // Reset emissive glow for nodes not communicating
+    nodeMap.forEach((data, rank) => {
+        const isActive = activeEvents.some(e => e.sender === rank || e.receiver === rank);
+        if (!isActive) {
+            data.mesh.material.emissive.setHex(0x222222);
+        }
+    });
 }
 
-function updateActiveLinksPosition() {
-    gContainer.select(".links-layer").selectAll("line")
-        .attr("x1", d => nodeMap.has(d.sender) ? nodeMap.get(d.sender).x : 0)
-        .attr("y1", d => nodeMap.has(d.sender) ? nodeMap.get(d.sender).y : 0)
-        .attr("x2", d => nodeMap.has(d.receiver) ? nodeMap.get(d.receiver).x : 0)
-        .attr("y2", d => nodeMap.has(d.receiver) ? nodeMap.get(d.receiver).y : 0);
+function clearLines() {
+    while(linesGroup.children.length > 0){ 
+        linesGroup.remove(linesGroup.children[0]); 
+    }
 }
 
-// --- Playback Loop ---
+// Playback logic remains exactly the same as the 2D version
 function togglePlayback() {
-    if (isPlaying) {
-        pausePlayback();
-    } else {
+    if (isPlaying) pausePlayback();
+    else {
         isPlaying = true;
         document.getElementById("btn-play").innerHTML = "⏸ Pause";
         lastFrameTime = performance.now();
@@ -195,14 +207,9 @@ function pausePlayback() {
 let lastFrameTime = 0;
 function playLoop(timestamp) {
     if (!isPlaying) return;
-
-    // Calculate delta time
-    const deltaTime = (timestamp - lastFrameTime) / 1000; // in seconds
+    const deltaTime = (timestamp - lastFrameTime) / 1000;
     lastFrameTime = timestamp;
-
     const speed = parseFloat(document.getElementById("speedSlider").value);
-    
-    // Increment time based on real delta time * multiplier
     let nextTime = currentTime + (deltaTime * speed);
 
     if (nextTime >= maxTime) {
@@ -210,25 +217,6 @@ function playLoop(timestamp) {
         pausePlayback();
         return;
     }
-
     seekToTime(nextTime);
     animationFrameId = requestAnimationFrame(playLoop);
-}
-
-// --- Utility Functions ---
-function showInspector(htmlContent) {
-    document.getElementById("inspector-content").innerHTML = htmlContent;
-}
-
-// Physics drag behaviors
-function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
-    d.fx = d.x; d.fy = d.y;
-}
-function dragged(event, d) {
-    d.fx = event.x; d.fy = event.y;
-}
-function dragended(event, d) {
-    if (!event.active) simulation.alphaTarget(0);
-    d.fx = null; d.fy = null;
 }

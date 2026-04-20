@@ -3,30 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPI Communication Tracker</title>
+    <title>MPI Visualiser</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div id="app-container">
         <aside id="sidebar">
             <div class="sidebar-header">
                 <h2>MPI Profiler</h2>
-                <p>Network & Topology Visualiiser</p>
+                <p>Hardware Mapping</p>
             </div>
-
             <div class="control-group">
                 <label for="profileLoader" class="btn-load">📂 Load .json Profile</label>
                 <input type="file" id="profileLoader" accept=".json">
             </div>
-
-            <div class="control-group stats-panel">
-                <h3>Run Statistics</h3>
-                <p>Total Ranks: <span id="stat-ranks">-</span></p>
-                <p>Total Events: <span id="stat-events">-</span></p>
-                <p>Duration: <span id="stat-duration">-</span> sec</p>
-            </div>
-
             <div class="control-group playback-panel">
                 <h3>Timeline</h3>
                 <div class="time-display">T: <span id="currentTimeLabel">0.000</span> s</div>
@@ -36,19 +28,12 @@
                     <label>Speed: <input type="range" id="speedSlider" min="0.1" max="5" value="1" step="0.1"></label>
                 </div>
             </div>
-
-            <div class="control-group inspector-panel">
-                <h3>Inspector</h3>
-                <div id="inspector-content">Hover over a node or active communication link to see details.</div>
-            </div>
         </aside>
 
         <main id="canvas-container">
-            <svg id="visCanvas"></svg>
-        </main>
+            <div id="visCanvas"></div> </main>
     </div>
 
-    <script src="visualiiser.js"></script>
+    <script src="visualiser.js"></script>
 </body>
 </html>
-
