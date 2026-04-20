@@ -83,7 +83,7 @@ int MPI_Init(int *argc, char ***argv){
   p2p_small_head->sender = -1;
   p2p_small_head->receiver = -1;
   p2p_small_head->count = -1;
-  p2p_small_head->datatype = -1;
+  p2p_small_head->bytes = -1;
   p2p_small_head->next = NULL;
 
   p2p_small_current = p2p_small_head;
@@ -102,11 +102,11 @@ int MPI_Init(int *argc, char ***argv){
   p2p_large_head->sender1 = -1;
   p2p_large_head->receiver1 = -1;
   p2p_large_head->count1 = -1;
-  p2p_large_head->datatype1 = -1;
+  p2p_large_head->bytes1 = -1;
   p2p_large_head->sender2 = -1;
   p2p_large_head->receiver2 = -1;
   p2p_large_head->count2 = -1;
-  p2p_large_head->datatype2 = -1;
+  p2p_large_head->bytes2 = -1;
   p2p_large_head->next = NULL;
 
   p2p_large_current = p2p_large_head;
@@ -578,7 +578,7 @@ int write_data_output(){
     temp_small_node.sender = current_small_node->sender;
     temp_small_node.receiver = current_small_node->receiver;
     temp_small_node.count = current_small_node->count;
-    temp_small_node.datatype = current_small_node->datatype;
+    temp_small_node.bytes = current_small_node->bytes;
 
     current_small_node = current_small_node->next;
     free(node);
@@ -600,11 +600,11 @@ int write_data_output(){
     temp_large_node.sender1 = current_large_node->sender1;
     temp_large_node.receiver1 = current_large_node->receiver1;
     temp_large_node.count1 = current_large_node->count1;
-    temp_large_node.datatype1 = current_large_node->datatype1;
+    temp_large_node.bytes1 = current_large_node->bytes1;
     temp_large_node.sender2 = current_large_node->sender2;
     temp_large_node.receiver2 = current_large_node->receiver2;
     temp_large_node.count2 = current_large_node->count2;
-    temp_large_node.datatype2 = current_large_node->datatype2;
+    temp_large_node.bytes2 = current_large_node->bytes2; 
     
     current_large_node = current_large_node->next;
     free(node);
@@ -643,9 +643,18 @@ unsigned long get_processor_and_core(int *chip, int *core){
 }
 #endif
 
-void add_p2p_small_data(int message_type, int sender, int receiver, int count, int datatype){
+void add_p2p_small_data(int message_type, int sender, int receiver, int count, MPI_Datatype datatype){
   // Calculate delta time using MPI_Wtime
   double temp_time = MPI_Wtime() - my_time;
+  
+  // Calculate exact byte volume
+  int type_size = 0;
+  // Some interceptors (like Wait/Barrier) will pass a dummy value. 
+  // We only query the size if it's a real communication.
+  if (count > 0) {
+      MPI_Type_size(datatype, &type_size);
+  }
+  int total_bytes = count * type_size;
 
   p2p_small_current->next = (p2p_small_node_t *) malloc(sizeof(p2p_small_node_t));
   p2p_small_current->next->time = temp_time;
@@ -654,7 +663,7 @@ void add_p2p_small_data(int message_type, int sender, int receiver, int count, i
   p2p_small_current->next->sender = sender;
   p2p_small_current->next->receiver = receiver;
   p2p_small_current->next->count = count;
-  p2p_small_current->next->datatype = datatype;
+  p2p_small_current->next->bytes = total_bytes; 
   p2p_small_current->next->next = NULL;
   
   p2p_small_current = p2p_small_current->next;
@@ -666,22 +675,41 @@ void add_p2p_small_data(int message_type, int sender, int receiver, int count, i
   }
 }
 
-void add_p2p_large_data(int message_type, int sender1, int receiver1, int count1, int datatype1, int sender2, int receiver2, int count2, int datatype2){
+void add_p2p_large_data(int message_type, int sender1, int receiver1, int count1, MPI_Datatype datatype1, int sender2, int receiver2, int count2, MPI_Datatype datatype2){
   // Calculate delta time using MPI_Wtime
   double temp_time = MPI_Wtime() - my_time;
 
+  // Calculate exact byte volume for the first payload (e.g., Send portion)
+  int type_size1 = 0;
+  if (count1 > 0) {
+      MPI_Type_size(datatype1, &type_size1);
+  }
+  int total_bytes1 = count1 * type_size1;
+
+  // Calculate exact byte volume for the second payload (e.g., Receive portion)
+  int type_size2 = 0;
+  if (count2 > 0) {
+      MPI_Type_size(datatype2, &type_size2);
+  }
+  int total_bytes2 = count2 * type_size2;
+
   p2p_large_current->next = (p2p_large_node_t *) malloc(sizeof(p2p_large_node_t));
   p2p_large_current->next->time = temp_time;
-  p2p_large_current->next->id =  current_id;
+  p2p_large_current->next->id = current_id;
   p2p_large_current->next->message_type = message_type;
+  
+  // First data movement
   p2p_large_current->next->sender1 = sender1;
   p2p_large_current->next->receiver1 = receiver1;
   p2p_large_current->next->count1 = count1;
-  p2p_large_current->next->datatype2 = datatype2;
+  p2p_large_current->next->bytes1 = total_bytes1; 
+  
+  // Second data movement
   p2p_large_current->next->sender2 = sender2;
   p2p_large_current->next->receiver2 = receiver2;
   p2p_large_current->next->count2 = count2;
-  p2p_large_current->next->datatype1 = datatype2; 
+  p2p_large_current->next->bytes2 = total_bytes2; 
+  
   p2p_large_current->next->next = NULL;
   
   p2p_large_current = p2p_large_current->next;

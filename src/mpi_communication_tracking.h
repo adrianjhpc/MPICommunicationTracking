@@ -50,7 +50,7 @@ typedef struct p2p_small_node {
   int sender;
   int receiver;
   int count;
-  int datatype;
+  int bytes;
   struct p2p_small_node *next;
 } p2p_small_node_t;
 
@@ -61,7 +61,7 @@ typedef struct p2p_small_node_no_link {
   int sender;
   int receiver;
   int count;
-  int datatype;
+  int bytes;
 } p2p_small_node_no_link_t;
 
 typedef struct p2p_large_node {
@@ -71,11 +71,11 @@ typedef struct p2p_large_node {
   int sender1;
   int receiver1;
   int count1;
-  int datatype1;
+  int bytes1; 
   int sender2;
   int receiver2;
   int count2;
-  int datatype2;
+  int bytes2;
   struct p2p_large_node *next;
 } p2p_large_node_t;
 
@@ -86,11 +86,11 @@ typedef struct p2p_large_node_no_link {
   int sender1;
   int receiver1;
   int count1;
-  int datatype1;
+  int bytes1;
   int sender2;
   int receiver2;
   int count2;
-  int datatype2;
+  int bytes2;
 } p2p_large_node_no_link_t;
 
 typedef struct process_info {
