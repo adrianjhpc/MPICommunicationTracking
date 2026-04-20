@@ -1,3 +1,6 @@
+#ifndef MPI_COMMUNICATION_TRACKING_H
+#define MPI_COMMUNICATION_TRACKING_H
+
 #define STRING_LENGTH 1024
 #define MPI_SEND_TYPE 13
 #define MPI_RECV_TYPE 14
@@ -12,7 +15,7 @@
 #define MPI_SENDRECV_TYPE 23
 
 typedef struct p2p_small_node {
-  int time;
+  double time;
   int id;
   int message_type;
   int sender;
@@ -23,7 +26,7 @@ typedef struct p2p_small_node {
 } p2p_small_node_t;
 
 typedef struct p2p_small_node_no_link {
-  int time;
+  double time;
   int id;
   int message_type;
   int sender;
@@ -32,9 +35,8 @@ typedef struct p2p_small_node_no_link {
   int datatype;
 } p2p_small_node_no_link_t;
 
-
 typedef struct p2p_large_node {
-  int time;
+  double time;
   int id;
   int message_type;
   int sender1;
@@ -49,7 +51,7 @@ typedef struct p2p_large_node {
 } p2p_large_node_t;
 
 typedef struct p2p_large_node_no_link {
-  int time;
+  double time; 
   int id;
   int message_type;
   int sender1;
@@ -62,7 +64,6 @@ typedef struct p2p_large_node_no_link {
   int datatype2;
 } p2p_large_node_no_link_t;
 
-
 typedef struct process_info {
   int rank;
   int process_id;
@@ -70,3 +71,5 @@ typedef struct process_info {
   int chip;
   char hostname[STRING_LENGTH];
 } process_info_t;
+
+#endif // MPI_COMMUNICATION_TRACKING_H
