@@ -206,25 +206,36 @@ function buildHardwareTopology(nodesData) {
 function renderActiveCommunications() {
     clearLines();
 
-    // Find all events currently inside our time window
     const activeEvents = parsedData.timeline.filter(d => 
         d.time <= currentTime && d.time >= (currentTime - TIME_WINDOW)
         && d.sender !== d.receiver 
     );
 
-    // Material for the faint curved "wire"
     const wireMaterial = new THREE.LineBasicMaterial({ 
         color: 0x58a6ff, 
         transparent: true, 
-        opacity: 0.15, // Make the path very faint
+        opacity: 0.15,
         blending: THREE.AdditiveBlending 
     });
 
-    // Material for the data packet (bright white glowing sphere)
     const packetGeometry = new THREE.SphereGeometry(1.5, 16, 16);
     const packetMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
+    // This prevents the "string of pearls" by ensuring only one interaction 
+    // is rendered per sender/receiver pair at any given time.
+    const activePaths = new Map();
     activeEvents.forEach(event => {
+        const pathKey = `${event.sender}-${event.receiver}`;
+        
+        // If we haven't seen this path yet, or if this event is NEWER than the saved one, save it.
+        // This ensures the animation is driven by the most recent message.
+        if (!activePaths.has(pathKey) || activePaths.get(pathKey).time < event.time) {
+            activePaths.set(pathKey, event);
+        }
+    });
+
+    // Iterate over the unique paths instead of every individual event
+    activePaths.forEach((event, pathKey) => {
         const sender = nodeMap.get(event.sender);
         const receiver = nodeMap.get(event.receiver);
 
@@ -232,58 +243,41 @@ function renderActiveCommunications() {
             const vStart = new THREE.Vector3(sender.x, sender.y, sender.z);
             const vEnd = new THREE.Vector3(receiver.x, receiver.y, receiver.z);
             
-            // Calculate a midpoint, but bulge it outward on the X & Z axes
-            // so the communication line flies outside the physical rack.
+            // Curve Logic
             const distance = vStart.distanceTo(vEnd);
             const vMid = new THREE.Vector3().addVectors(vStart, vEnd).multiplyScalar(0.5);
-            
-            // Bulge outwards by a minimum of 20 units, or 40% of the distance
             const bulgeAmount = Math.max(20, distance * 0.4); 
             vMid.x += bulgeAmount; 
-            vMid.z += bulgeAmount * 0.2; // Slight twist so lines don't perfectly overlap
+            vMid.z += bulgeAmount * 0.2; 
 
-            // Create a smooth Quadratic Bezier Curve
             const curve = new THREE.QuadraticBezierCurve3(vStart, vMid, vEnd);
             
-            // Draw the faint wire path
             const points = curve.getPoints(20);
             const geometry = new THREE.BufferGeometry().setFromPoints(points);
             const line = new THREE.Line(geometry, wireMaterial);
             linesGroup.add(line);
             
-            // Calculate exactly how old this specific message is within the window
             const ageOfMessage = currentTime - event.time;
-           
-            const FLIGHT_TIME = TIME_WINDOW * 0.15; 
+            
+            const FLIGHT_TIME = TIME_WINDOW * 0.04; 
             
             let progress = ageOfMessage / FLIGHT_TIME;
- 
-            // Only draw the ball if it hasn't reached the destination yet
-            if (progress <= 1.0) {
-                // Get exact point on the curve
+            
+            // Only draw the ball if it is currently in flight (progress between 0.0 and 1.0)
+            if (progress >= 0 && progress <= 1.0) {
                 const packetPos = curve.getPoint(progress);
-                
-                // Draw the packet
                 const packet = new THREE.Mesh(packetGeometry, packetMaterial);
                 packet.position.copy(packetPos);
                 linesGroup.add(packet);
             }
 
-            // Highlight the sender (Blue) and receiver (Green) nodes
+            // Highlight nodes
             sender.mesh.material.emissive.setHex(0x1f6feb); 
-            receiver.mesh.material.emissive.setHex(0x2ea043);           
- 
-            // Get the exact point on the curve for this percentage
-            const packetPos = curve.getPoint(progress);
-            
-            // Draw the packet sphere at that exact location
-            const packet = new THREE.Mesh(packetGeometry, packetMaterial);
-            packet.position.copy(packetPos);
-            linesGroup.add(packet);
+            receiver.mesh.material.emissive.setHex(0x2ea043); 
         }
     });
 
-    // Reset glow for nodes that have stopped communicating entirely
+    // Reset glow for nodes that stopped communicating
     nodeMap.forEach((data, rank) => {
         const isActive = activeEvents.some(e => e.sender === rank || e.receiver === rank);
         if (!isActive) {
