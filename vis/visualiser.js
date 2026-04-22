@@ -13,6 +13,8 @@ const TIME_WINDOW = 0.05;
 let scene, camera, renderer, controls;
 let linesGroup;
 
+let timeMultiplier = 1;
+
 document.addEventListener("DOMContentLoaded", () => {
     initThreeJS();
     document.getElementById("profileLoader").addEventListener("change", handleFileUpload);
@@ -101,7 +103,14 @@ function initDashboard() {
     const topology = parsedData.topology;
 
     maxTime = timeline.length > 0 ? timeline[timeline.length - 1].time : 0;
-    
+
+    if (maxTime > 0) {
+         timeMultiplier = maxTime / 10.0;
+    } else {
+         timeMultiplier = 1;
+    }    
+
+    document.getElementById("timeSlider").step = (maxTime / 1000).toString();
     document.getElementById("timeSlider").max = maxTime;
     document.getElementById("timeSlider").disabled = false;
     document.getElementById("btn-play").disabled = false;
@@ -114,12 +123,15 @@ function initDashboard() {
 let hostnameMap = new Map();
 
 function buildHardwareTopology(nodesData) {
-    const nodeGeometry = new THREE.BoxGeometry(8, 8, 8);
-    
+    const nodeGeometry = new THREE.BoxGeometry(12, 2, 12); 
+
     // Aesthetic Materials
     const idleMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x161b22, transparent: true, opacity: 0.4, 
-        specular: 0x222222, shininess: 10 
+        color: 0x8b949e,       // Lighter gray
+        transparent: true, 
+        opacity: 0.15,         // Very sheer
+        depthWrite: false,     // Fixes overlapping transparency glitches
+        blending: THREE.AdditiveBlending // Gives them a slight holographic look
     });
     const allocatedMaterial = new THREE.MeshPhongMaterial({ 
         color: 0x8b949e, emissive: 0x000000 
@@ -142,7 +154,7 @@ function buildHardwareTopology(nodesData) {
 
                 rack.nodes.forEach(node => {
                     const x = cab.x + rack.x_offset;
-                    const y = node.slot * 12; // Height
+                    const y = node.slot * 4; // Height
                     const z = cab.z + rack.z_offset;
 
                     // Create idle node
@@ -316,10 +328,15 @@ function pausePlayback() {
 let lastFrameTime = 0;
 function playLoop(timestamp) {
     if (!isPlaying) return;
-    const deltaTime = (timestamp - lastFrameTime) / 1000;
+    
+    // Standard delta time calculation (how long since the last screen refresh)
+    const deltaTime = (timestamp - lastFrameTime) / 1000; 
     lastFrameTime = timestamp;
+    
     const speed = parseFloat(document.getElementById("speedSlider").value);
-    let nextTime = currentTime + (deltaTime * speed);
+    
+    // Calculate the next time based on our smart multiplier
+    let nextTime = currentTime + (deltaTime * timeMultiplier * speed);
 
     if (nextTime >= maxTime) {
         seekToTime(maxTime);
