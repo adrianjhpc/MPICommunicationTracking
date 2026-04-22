@@ -43,7 +43,7 @@ int get_local_filename(char *filename, char *hostname, int proc_id);
 int get_data_limit();
 
 
-typedef struct p2p_small_node {
+typedef struct small_node {
   double time;
   int id;
   int message_type;
@@ -51,10 +51,10 @@ typedef struct p2p_small_node {
   int receiver;
   int count;
   int bytes;
-  struct p2p_small_node *next;
-} p2p_small_node_t;
+  struct small_node *next;
+} small_node_t;
 
-typedef struct p2p_small_node_no_link {
+typedef struct small_node_no_link {
   double time;
   int id;
   int message_type;
@@ -62,9 +62,9 @@ typedef struct p2p_small_node_no_link {
   int receiver;
   int count;
   int bytes;
-} p2p_small_node_no_link_t;
+} small_node_no_link_t;
 
-typedef struct p2p_large_node {
+typedef struct large_node {
   double time;
   int id;
   int message_type;
@@ -76,10 +76,10 @@ typedef struct p2p_large_node {
   int receiver2;
   int count2;
   int bytes2;
-  struct p2p_large_node *next;
-} p2p_large_node_t;
+  struct large_node *next;
+} large_node_t;
 
-typedef struct p2p_large_node_no_link {
+typedef struct large_node_no_link {
   double time; 
   int id;
   int message_type;
@@ -91,7 +91,7 @@ typedef struct p2p_large_node_no_link {
   int receiver2;
   int count2;
   int bytes2;
-} p2p_large_node_no_link_t;
+} large_node_no_link_t;
 
 typedef struct process_info {
   int rank;

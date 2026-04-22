@@ -17,16 +17,16 @@ double my_time;
 int my_rank;
 int my_size;
 
-p2p_small_node_t *p2p_small_head = NULL;
-p2p_small_node_t *p2p_small_current = NULL;
-int p2p_small_current_length;
-int p2p_small_total_length;
+small_node_t *small_head = NULL;
+small_node_t *small_current = NULL;
+int small_current_length;
+int small_total_length;
 int *number_of_small_messages;
 
-p2p_large_node_t *p2p_large_head = NULL;
-p2p_large_node_t *p2p_large_current = NULL;
-int p2p_large_current_length;
-int p2p_large_total_length;
+large_node_t *large_head = NULL;
+large_node_t *large_current = NULL;
+int large_current_length;
+int large_total_length;
 int *number_of_large_messages;
 
 int current_id;
@@ -35,8 +35,8 @@ pid_t process_id = -1;
 char hostname[STRING_LENGTH];
 char programname[STRING_LENGTH];
 FILE *global_file;
-FILE *p2p_small_output_file;
-FILE *p2p_large_output_file;
+FILE *small_output_file;
+FILE *large_output_file;
 process_info_t *processes;
 
 
@@ -88,46 +88,46 @@ int MPI_Init_thread(int *argc, char ***argv, int required, int *provided) {
 
   gethostname(hostname, STRING_LENGTH);
 
-  p2p_small_head = (p2p_small_node_t *) malloc(sizeof(p2p_small_node_t));
-  if(p2p_small_head == NULL){
+  small_head = (small_node_t *) malloc(sizeof(small_node_t));
+  if(small_head == NULL){
     printf("Error creating the data structure for storing message data\n");
     return 1;
   }
-  p2p_small_head->time = 0.0;
-  p2p_small_head->id = -1;
-  p2p_small_head->message_type = -1;
-  p2p_small_head->sender = -1;
-  p2p_small_head->receiver = -1;
-  p2p_small_head->count = -1;
-  p2p_small_head->bytes = -1;
-  p2p_small_head->next = NULL;
+  small_head->time = 0.0;
+  small_head->id = -1;
+  small_head->message_type = -1;
+  small_head->sender = -1;
+  small_head->receiver = -1;
+  small_head->count = -1;
+  small_head->bytes = -1;
+  small_head->next = NULL;
 
-  p2p_small_current = p2p_small_head;
-  p2p_small_current_length = 0;
-  p2p_small_total_length = 0;
+  small_current = small_head;
+  small_current_length = 0;
+  small_total_length = 0;
 
-  p2p_large_head = (p2p_large_node_t *) malloc(sizeof(p2p_large_node_t));
-  if(p2p_large_head == NULL){
+  large_head = (large_node_t *) malloc(sizeof(large_node_t));
+  if(large_head == NULL){
     printf("Error creating the data structure for storing message data\n");
     return 1;
   }
 
-  p2p_large_head->time = 0.0;
-  p2p_large_head->id = -1;
-  p2p_large_head->message_type = -1;
-  p2p_large_head->sender1 = -1;
-  p2p_large_head->receiver1 = -1;
-  p2p_large_head->count1 = -1;
-  p2p_large_head->bytes1 = -1;
-  p2p_large_head->sender2 = -1;
-  p2p_large_head->receiver2 = -1;
-  p2p_large_head->count2 = -1;
-  p2p_large_head->bytes2 = -1;
-  p2p_large_head->next = NULL;
+  large_head->time = 0.0;
+  large_head->id = -1;
+  large_head->message_type = -1;
+  large_head->sender1 = -1;
+  large_head->receiver1 = -1;
+  large_head->count1 = -1;
+  large_head->bytes1 = -1;
+  large_head->sender2 = -1;
+  large_head->receiver2 = -1;
+  large_head->count2 = -1;
+  large_head->bytes2 = -1;
+  large_head->next = NULL;
 
-  p2p_large_current = p2p_large_head;
-  p2p_large_current_length = 0;
-  p2p_large_total_length = 0;
+  large_current = large_head;
+  large_current_length = 0;
+  large_total_length = 0;
 
   current_id = 0;
 
@@ -166,46 +166,46 @@ int MPI_Init(int *argc, char ***argv){
 
   gethostname(hostname, STRING_LENGTH);
 
-  p2p_small_head = (p2p_small_node_t *) malloc(sizeof(p2p_small_node_t));
-  if(p2p_small_head == NULL){
+  small_head = (small_node_t *) malloc(sizeof(small_node_t));
+  if(small_head == NULL){
     printf("Error creating the data structure for storing message data\n");
     return 1;
   }
-  p2p_small_head->time = 0.0;
-  p2p_small_head->id = -1;
-  p2p_small_head->message_type = -1;
-  p2p_small_head->sender = -1;
-  p2p_small_head->receiver = -1;
-  p2p_small_head->count = -1;
-  p2p_small_head->bytes = -1;
-  p2p_small_head->next = NULL;
+  small_head->time = 0.0;
+  small_head->id = -1;
+  small_head->message_type = -1;
+  small_head->sender = -1;
+  small_head->receiver = -1;
+  small_head->count = -1;
+  small_head->bytes = -1;
+  small_head->next = NULL;
 
-  p2p_small_current = p2p_small_head;
-  p2p_small_current_length = 0;
-  p2p_small_total_length = 0;
+  small_current = small_head;
+  small_current_length = 0;
+  small_total_length = 0;
 
-  p2p_large_head = (p2p_large_node_t *) malloc(sizeof(p2p_large_node_t));
-  if(p2p_large_head == NULL){
+  large_head = (large_node_t *) malloc(sizeof(large_node_t));
+  if(large_head == NULL){
     printf("Error creating the data structure for storing message data\n");
     return 1;
   }
 
-  p2p_large_head->time = 0.0;
-  p2p_large_head->id = -1;
-  p2p_large_head->message_type = -1;
-  p2p_large_head->sender1 = -1;
-  p2p_large_head->receiver1 = -1;
-  p2p_large_head->count1 = -1;
-  p2p_large_head->bytes1 = -1;
-  p2p_large_head->sender2 = -1;
-  p2p_large_head->receiver2 = -1;
-  p2p_large_head->count2 = -1;
-  p2p_large_head->bytes2 = -1;
-  p2p_large_head->next = NULL;
+  large_head->time = 0.0;
+  large_head->id = -1;
+  large_head->message_type = -1;
+  large_head->sender1 = -1;
+  large_head->receiver1 = -1;
+  large_head->count1 = -1;
+  large_head->bytes1 = -1;
+  large_head->sender2 = -1;
+  large_head->receiver2 = -1;
+  large_head->count2 = -1;
+  large_head->bytes2 = -1;
+  large_head->next = NULL;
 
-  p2p_large_current = p2p_large_head;
-  p2p_large_current_length = 0;
-  p2p_large_total_length = 0;
+  large_current = large_head;
+  large_current_length = 0;
+  large_total_length = 0;
 
   current_id = 0;
 
@@ -325,8 +325,8 @@ int MPI_Finalize(){
   
   write_data_output();
 
-  free(p2p_small_head);
-  free(p2p_large_head);
+  free(small_head);
+  free(large_head);
 
   close_data_file();
 
@@ -392,26 +392,26 @@ int open_data_files(){
 
   get_local_filename(filename, hostname, process_id);
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_small");
-  p2p_small_output_file = fopen(tempfilename,"wb");
+  strcat(tempfilename, "_small");
+  small_output_file = fopen(tempfilename,"wb");
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_large");
-  p2p_large_output_file = fopen(tempfilename,"wb");
+  strcat(tempfilename, "_large");
+  large_output_file = fopen(tempfilename,"wb");
 
   return 0;
 }
 
-int open_proc_data_files(FILE **p2p_small_input_file, FILE **p2p_large_input_file, int proc_id, char *local_hostname){
+int open_proc_data_files(FILE **small_input_file, FILE **large_input_file, int proc_id, char *local_hostname){
   char filename[STRING_LENGTH];
   char tempfilename[STRING_LENGTH];
 
   get_local_filename(filename, local_hostname, proc_id);
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_small");
-  *p2p_small_input_file = fopen(tempfilename,"rb");
+  strcat(tempfilename, "_small");
+  *small_input_file = fopen(tempfilename,"rb");
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_large");
-  *p2p_large_input_file = fopen(tempfilename,"rb");
+  strcat(tempfilename, "_large");
+  *large_input_file = fopen(tempfilename,"rb");
   
   return 0;
 }
@@ -422,10 +422,10 @@ int remove_proc_data_files(int proc_id, char *local_hostname){
 
   get_local_filename(filename, local_hostname, proc_id);
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_small");
+  strcat(tempfilename, "_small");
   unlink(tempfilename);
   strcpy(tempfilename, filename);
-  strcat(tempfilename, "_p2p_large");
+  strcat(tempfilename, "_large");
   unlink(tempfilename);
 
   return 0;
@@ -442,8 +442,8 @@ int get_local_filename(char *filename, char *local_hostname, int proc_id){
 int close_data_file(){
   int err;
 
-  err = fclose(p2p_small_output_file);
-  err += fclose(p2p_large_output_file);
+  err = fclose(small_output_file);
+  err += fclose(large_output_file);
 
   return err;
 }
@@ -578,22 +578,22 @@ int communicate_total_message_numbers(){
 
   if(my_rank == 0){
     number_of_small_messages = malloc(sizeof(int)*my_size);
-    number_of_small_messages[0] = p2p_small_total_length;
+    number_of_small_messages[0] = small_total_length;
 
     for(i=1; i<my_size; i++){
       PMPI_Recv(&number_of_small_messages[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
 
     number_of_large_messages = malloc(sizeof(int)*my_size);
-    number_of_large_messages[0] = p2p_large_total_length;
+    number_of_large_messages[0] = large_total_length;
 
     for(i=1; i<my_size; i++){
       PMPI_Recv(&number_of_large_messages[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
 
   }else{
-    PMPI_Send(&p2p_small_total_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    PMPI_Send(&p2p_large_total_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    PMPI_Send(&small_total_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    PMPI_Send(&large_total_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
   }
   
   return 0;
@@ -601,16 +601,16 @@ int communicate_total_message_numbers(){
 
 int process_data_files(){
   int i;
-  FILE *p2p_small_input_file;
-  FILE *p2p_large_input_file;
+  FILE *small_input_file;
+  FILE *large_input_file;
   char *line = NULL;
-  p2p_small_node_no_link_t temp_p2p_small;
-  p2p_large_node_no_link_t temp_p2p_large;
+  small_node_no_link_t temp_small;
+  large_node_no_link_t temp_large;
 
   assert(my_rank == 0);
 
   for(i=0; i<my_size; i++){
-    open_proc_data_files(&p2p_small_input_file, &p2p_large_input_file, processes[i].process_id, processes[i].hostname);
+    open_proc_data_files(&small_input_file, &large_input_file, processes[i].process_id, processes[i].hostname);
     
     fwrite(&processes[i].rank, sizeof(int), 1, global_file);
     line = malloc(sizeof(char)*24);
@@ -620,11 +620,11 @@ int process_data_files(){
     
     fwrite(&number_of_small_messages[i], sizeof(int), 1, global_file);
     
-    if (p2p_small_input_file) {
-      while(fread(&temp_p2p_small, sizeof(p2p_small_node_no_link_t), 1, p2p_small_input_file) == 1){
-        fwrite(&temp_p2p_small, sizeof(p2p_small_node_no_link_t), 1, global_file);
+    if (small_input_file) {
+      while(fread(&temp_small, sizeof(small_node_no_link_t), 1, small_input_file) == 1){
+        fwrite(&temp_small, sizeof(small_node_no_link_t), 1, global_file);
       }
-      fclose(p2p_small_input_file);
+      fclose(small_input_file);
     }
 
     line = malloc(sizeof(char)*24);
@@ -634,11 +634,11 @@ int process_data_files(){
     
     fwrite(&number_of_large_messages[i], sizeof(int), 1, global_file);
     
-    if (p2p_large_input_file) {
-      while(fread(&temp_p2p_large, sizeof(p2p_large_node_no_link_t), 1, p2p_large_input_file) == 1){
-        fwrite(&temp_p2p_large, sizeof(p2p_large_node_no_link_t), 1, global_file);
+    if (large_input_file) {
+      while(fread(&temp_large, sizeof(large_node_no_link_t), 1, large_input_file) == 1){
+        fwrite(&temp_large, sizeof(large_node_no_link_t), 1, global_file);
       }
-      fclose(p2p_large_input_file);
+      fclose(large_input_file);
     }
     
     remove_proc_data_files(processes[i].process_id, processes[i].hostname);
@@ -648,7 +648,7 @@ int process_data_files(){
 
 int check_data_limit(){
   int limit = get_data_limit();
-  return (p2p_small_current_length > limit || p2p_large_current_length > limit);
+  return (small_current_length > limit || large_current_length > limit);
 }
 
 int get_data_limit(){
@@ -657,15 +657,15 @@ int get_data_limit(){
 
 int write_data_output(){
   int i;
-  p2p_small_node_t *current_small_node;
-  p2p_large_node_t *current_large_node;
-  p2p_small_node_no_link_t temp_small_node;
-  p2p_large_node_no_link_t temp_large_node;
+  small_node_t *current_small_node;
+  large_node_t *current_large_node;
+  small_node_no_link_t temp_small_node;
+  large_node_no_link_t temp_large_node;
 
-  current_small_node = p2p_small_head->next;
+  current_small_node = small_head->next;
   
-  for(i=0; i<p2p_small_current_length; i++){
-    p2p_small_node_t *node = current_small_node;
+  for(i=0; i<small_current_length; i++){
+    small_node_t *node = current_small_node;
     temp_small_node.time = current_small_node->time;
     temp_small_node.id = current_small_node->id;
     temp_small_node.message_type = current_small_node->message_type;
@@ -677,17 +677,17 @@ int write_data_output(){
     current_small_node = current_small_node->next;
     free(node);
  
-    fwrite(&temp_small_node, sizeof(p2p_small_node_no_link_t), 1, p2p_small_output_file);
+    fwrite(&temp_small_node, sizeof(small_node_no_link_t), 1, small_output_file);
   }
 
-  p2p_small_current = p2p_small_head;
-  p2p_small_total_length += p2p_small_current_length;
-  p2p_small_current_length = 0;
+  small_current = small_head;
+  small_total_length += small_current_length;
+  small_current_length = 0;
 
-  current_large_node = p2p_large_head->next;
+  current_large_node = large_head->next;
 
-  for(i=0; i<p2p_large_current_length; i++){
-    p2p_large_node_t *node = current_large_node;
+  for(i=0; i<large_current_length; i++){
+    large_node_t *node = current_large_node;
     temp_large_node.time = current_large_node->time;
     temp_large_node.id = current_large_node->id;
     temp_large_node.message_type = current_large_node->message_type;
@@ -702,12 +702,12 @@ int write_data_output(){
     
     current_large_node = current_large_node->next;
     free(node);
-    fwrite(&temp_large_node, sizeof(p2p_large_node_no_link_t), 1, p2p_large_output_file);
+    fwrite(&temp_large_node, sizeof(large_node_no_link_t), 1, large_output_file);
   }
 
-  p2p_large_current = p2p_large_head;
-  p2p_large_total_length += p2p_large_current_length;
-  p2p_large_current_length = 0;
+  large_current = large_head;
+  large_total_length += large_current_length;
+  large_current_length = 0;
 
   return 0;
 }
@@ -737,7 +737,7 @@ unsigned long get_processor_and_core(int *chip, int *core){
 }
 #endif
 
-void add_p2p_small_data(int message_type, int sender, int receiver, int count, MPI_Datatype datatype){
+void add_small_data(int message_type, int sender, int receiver, int count, MPI_Datatype datatype){
   // Calculate delta time using MPI_Wtime
   double temp_time = MPI_Wtime() - my_time;
   
@@ -750,18 +750,18 @@ void add_p2p_small_data(int message_type, int sender, int receiver, int count, M
   }
   int total_bytes = count * type_size;
 
-  p2p_small_current->next = (p2p_small_node_t *) malloc(sizeof(p2p_small_node_t));
-  p2p_small_current->next->time = temp_time;
-  p2p_small_current->next->id =  current_id;
-  p2p_small_current->next->message_type = message_type;
-  p2p_small_current->next->sender = sender;
-  p2p_small_current->next->receiver = receiver;
-  p2p_small_current->next->count = count;
-  p2p_small_current->next->bytes = total_bytes; 
-  p2p_small_current->next->next = NULL;
+  small_current->next = (small_node_t *) malloc(sizeof(small_node_t));
+  small_current->next->time = temp_time;
+  small_current->next->id =  current_id;
+  small_current->next->message_type = message_type;
+  small_current->next->sender = sender;
+  small_current->next->receiver = receiver;
+  small_current->next->count = count;
+  small_current->next->bytes = total_bytes; 
+  small_current->next->next = NULL;
   
-  p2p_small_current = p2p_small_current->next;
-  p2p_small_current_length++;
+  small_current = small_current->next;
+  small_current_length++;
   current_id++;
 
   if(check_data_limit()){
@@ -769,7 +769,7 @@ void add_p2p_small_data(int message_type, int sender, int receiver, int count, M
   }
 }
 
-void add_p2p_large_data(int message_type, int sender1, int receiver1, int count1, MPI_Datatype datatype1, int sender2, int receiver2, int count2, MPI_Datatype datatype2){
+void add_large_data(int message_type, int sender1, int receiver1, int count1, MPI_Datatype datatype1, int sender2, int receiver2, int count2, MPI_Datatype datatype2){
   // Calculate delta time using MPI_Wtime
   double temp_time = MPI_Wtime() - my_time;
 
@@ -787,27 +787,27 @@ void add_p2p_large_data(int message_type, int sender1, int receiver1, int count1
   }
   int total_bytes2 = count2 * type_size2;
 
-  p2p_large_current->next = (p2p_large_node_t *) malloc(sizeof(p2p_large_node_t));
-  p2p_large_current->next->time = temp_time;
-  p2p_large_current->next->id = current_id;
-  p2p_large_current->next->message_type = message_type;
+  large_current->next = (large_node_t *) malloc(sizeof(large_node_t));
+  large_current->next->time = temp_time;
+  large_current->next->id = current_id;
+  large_current->next->message_type = message_type;
   
   // First data movement
-  p2p_large_current->next->sender1 = sender1;
-  p2p_large_current->next->receiver1 = receiver1;
-  p2p_large_current->next->count1 = count1;
-  p2p_large_current->next->bytes1 = total_bytes1; 
+  large_current->next->sender1 = sender1;
+  large_current->next->receiver1 = receiver1;
+  large_current->next->count1 = count1;
+  large_current->next->bytes1 = total_bytes1; 
   
   // Second data movement
-  p2p_large_current->next->sender2 = sender2;
-  p2p_large_current->next->receiver2 = receiver2;
-  p2p_large_current->next->count2 = count2;
-  p2p_large_current->next->bytes2 = total_bytes2; 
+  large_current->next->sender2 = sender2;
+  large_current->next->receiver2 = receiver2;
+  large_current->next->count2 = count2;
+  large_current->next->bytes2 = total_bytes2; 
   
-  p2p_large_current->next->next = NULL;
+  large_current->next->next = NULL;
   
-  p2p_large_current = p2p_large_current->next;
-  p2p_large_current_length++;
+  large_current = large_current->next;
+  large_current_length++;
   current_id++;
 
   if(check_data_limit()){
@@ -821,120 +821,121 @@ int mpi_send_(const void *buf, int count, MPI_Datatype datatype, int dest, int t
 }
 
 int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm){
-  add_p2p_small_data(MPI_SEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_SEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Send(buf, count, datatype, dest, tag, comm);
 }
 
 int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Status *status){
-  add_p2p_small_data(MPI_RECV_TYPE, source, my_rank, count, datatype);
+  add_small_data(MPI_RECV_TYPE, source, my_rank, count, datatype);
   return PMPI_Recv(buf, count, datatype, source, tag, comm, status);
 }
 
 int MPI_Bsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm){
-  add_p2p_small_data(MPI_BSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_BSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Bsend(buf, count, datatype, dest, tag, comm);
 }
 
 int MPI_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm){
-  add_p2p_small_data(MPI_SSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_SSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Ssend(buf, count, datatype, dest, tag, comm);
 }
 
 int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm){
-  add_p2p_small_data(MPI_RSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_RSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Rsend(buf, count, datatype, dest, tag, comm);
 }
 
 int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request){
-  add_p2p_small_data(MPI_ISEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_ISEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
 }
 
 int MPI_Ibsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request){
-  add_p2p_small_data(MPI_IBSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_IBSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Ibsend(buf, count, datatype, dest, tag, comm, request);
 }
 
 int MPI_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request){
-  add_p2p_small_data(MPI_ISSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_ISSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Issend(buf, count, datatype, dest, tag, comm, request);
 }
 
 int MPI_Irsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request){
-  add_p2p_small_data(MPI_IRSEND_TYPE, my_rank, dest, count, datatype);
+  add_small_data(MPI_IRSEND_TYPE, my_rank, dest, count, datatype);
   return PMPI_Irsend(buf, count, datatype, dest, tag, comm, request);
 }
 
 int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request){
-  add_p2p_small_data(MPI_IRECV_TYPE, source, my_rank, count, datatype);
+  add_small_data(MPI_IRECV_TYPE, source, my_rank, count, datatype);
   return PMPI_Irecv(buf, count, datatype, source, tag, comm, request);
 }
 
 int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag, void *recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm, MPI_Status *status){
-  add_p2p_large_data(MPI_SENDRECV_TYPE, dest, my_rank, sendcount, sendtype, my_rank, dest, recvcount, recvtype);
+  add_large_data(MPI_SENDRECV_TYPE, dest, my_rank, sendcount, sendtype, my_rank, dest, recvcount, recvtype);
   return PMPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf, recvcount, recvtype, source, recvtag, comm, status);
 }
 
 int MPI_Wait(MPI_Request *request, MPI_Status *status){
   // For a Wait, we track that the local rank completed a wait event.
   // We set sender and receiver to my_rank, and count to 0.
-  add_p2p_small_data(MPI_WAIT_TYPE, my_rank, my_rank, 0, -1);
+  add_small_data(MPI_WAIT_TYPE, my_rank, my_rank, 0, MPI_DATATYPE_NULL);
   return PMPI_Wait(request, status);
 }
 
 int MPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status array_of_statuses[]){
   // We use the count variable here to track how many requests were waited on.
-  add_p2p_small_data(MPI_WAITALL_TYPE, my_rank, my_rank, count, -1);
+  // Passing MPI_DATATYPE_NULL prevents MPI_Type_size from attempting to read a dummy datatype.
+  add_small_data(MPI_WAITALL_TYPE, my_rank, my_rank, count, MPI_DATATYPE_NULL);
   return PMPI_Waitall(count, array_of_requests, array_of_statuses);
 }
 
 int MPI_Barrier(MPI_Comm comm){
-  add_p2p_small_data(MPI_BARRIER_TYPE, my_rank, my_rank, 0, -1);
+  add_small_data(MPI_BARRIER_TYPE, my_rank, my_rank, 0, MPI_DATATYPE_NULL);
   return PMPI_Barrier(comm);
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm){
   // Bcast has a clear sender (root) and receiver (everyone else).
-  add_p2p_small_data(MPI_BCAST_TYPE, root, my_rank, count, datatype);
+  add_small_data(MPI_BCAST_TYPE, root, my_rank, count, datatype);
   return PMPI_Bcast(buffer, count, datatype, root, comm);
 }
 
 int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm){
   // Reduce flows from the local rank to the root rank.
-  add_p2p_small_data(MPI_REDUCE_TYPE, my_rank, root, count, datatype);
+  add_small_data(MPI_REDUCE_TYPE, my_rank, root, count, datatype);
   return PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, root, comm);
 }
 
 int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm){
   // Allreduce sends data everywhere, so we log my_rank as both.
-  add_p2p_small_data(MPI_ALLREDUCE_TYPE, my_rank, my_rank, count, datatype);
+  add_small_data(MPI_ALLREDUCE_TYPE, my_rank, my_rank, count, datatype);
   return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
 }
 
 int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm){
   // Gather involves sending (sendcount) to the root, and the root receiving (recvcount).
   // We use the large data struct to capture both data types and counts.
-  // If we are not the root, force the receive arguments to 0 and NULL so add_p2p_large_data safely ignores them.
+  // If we are not the root, force the receive arguments to 0 and NULL so add_large_data safely ignores them.
   int safe_recvcount = (my_rank == root) ? recvcount : 0;
   MPI_Datatype safe_recvtype = (my_rank == root) ? recvtype : MPI_DATATYPE_NULL;
 
-  add_p2p_large_data(MPI_GATHER_TYPE, my_rank, root, sendcount, sendtype, root, my_rank, safe_recvcount, safe_recvtype);
+  add_large_data(MPI_GATHER_TYPE, my_rank, root, sendcount, sendtype, root, my_rank, safe_recvcount, safe_recvtype);
   
   return PMPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
 }
 
 int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm){
   // Scatter involves root sending to the local rank.
-  // If we are not the root, force the send arguments to 0 and NULL so add_p2p_large_data safely ignores them.
+  // If we are not the root, force the send arguments to 0 and NULL so add_large_data safely ignores them.
   int safe_sendcount = (my_rank == root) ? sendcount : 0;
   MPI_Datatype safe_sendtype = (my_rank == root) ? sendtype : MPI_DATATYPE_NULL;
 
-  add_p2p_large_data(MPI_SCATTER_TYPE, root, my_rank, safe_sendcount, safe_sendtype, my_rank, root, recvcount, recvtype);
+  add_large_data(MPI_SCATTER_TYPE, root, my_rank, safe_sendcount, safe_sendtype, my_rank, root, recvcount, recvtype);
   
   return PMPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
 }
 
 int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm){
-  add_p2p_large_data(MPI_ALLGATHER_TYPE, my_rank, my_rank, sendcount, sendtype, my_rank, my_rank, recvcount, recvtype);
+  add_large_data(MPI_ALLGATHER_TYPE, my_rank, my_rank, sendcount, sendtype, my_rank, my_rank, recvcount, recvtype);
   return PMPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
 }

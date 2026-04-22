@@ -4,7 +4,6 @@ import sys
 import os
 
 # --- MPI Message Type Mapping ---
-# Matches the definitions in mpi_communication_tracking.h
 MESSAGE_TYPES = {
     13: "MPI_SEND",      14: "MPI_RECV",      15: "MPI_BSEND",
     16: "MPI_SSEND",     17: "MPI_RSEND",     18: "MPI_ISEND",
@@ -27,63 +26,52 @@ def load_hardware_map(filepath):
     for cab in hw.get("cabinets", []):
         for rack in cab.get("racks", []):
             for node in rack.get("nodes", []):
-                # Calculate absolute 3D position
-                # Assuming slots are stacked vertically (Y axis), 10 units apart
                 lookup[node["hostname"]] = {
                     "cab_id": cab["id"],
                     "rack_id": rack["id"],
                     "x": cab["x"] + rack["x_offset"],
-                    "y": node["slot"] * 12, # Height multiplier
+                    "y": node["slot"] * 12, 
                     "z": cab["z"] + rack["z_offset"]
                 }
     return lookup
 
-# --- NEW: Message Binning Function ---
-def calculate_message_stats(timeline):
-    """Bins messages by size and MPI call type for histogram visualization."""
-    bins_template = {
-        "< 128B": 0,
-        "128B < 1KB": 0, 
-        "1KB - 64KB": 0, 
-        "64KB - 1MB": 0, 
-        "1MB - 16MB": 0, 
-        "> 16MB": 0
-    }
+def print_summary_table(stats):
+    """Prints a formatted ASCII table of the message statistics to the terminal."""
+    print("\n" + "="*95)
+    print(" MPI COMMUNICATION SUMMARY")
+    print("="*95)
     
-    stats = {}
+    if not stats:
+        print(" No communication events found.")
+        print("="*95 + "\n")
+        return
 
-    for event in timeline:
-        call = event.get("call", "UNKNOWN")
-        bytes_transferred = event.get("bytes", 0)
-
-        # Initialize the call type if we haven't seen it yet
-        if call not in stats:
-            stats[call] = dict(bins_template)
-
-        # Sort into logarithmic bins
-        if bytes_transferred < 128:
-             stats[call]["< 128B"] += 1
-        elif bytes_transferred < 1024:
-            stats[call]["128B < 1KB"] += 1
-        elif bytes_transferred < 65536:
-            stats[call]["1KB - 64KB"] += 1
-        elif bytes_transferred < 1048576:
-            stats[call]["64KB - 1MB"] += 1
-        elif bytes_transferred < 16777216:
-            stats[call]["1MB - 16MB"] += 1
-        else:
-            stats[call]["> 16MB"] += 1
-
-    return stats
-# -------------------------------------
+    bins = ["< 128B", "128B - 1KB", "1KB - 64KB", "64KB - 1MB", "1MB - 16MB", "> 16MB"]
+    
+    header = f" {'MPI Call':<13} | " + " | ".join([f"{b:<10}" for b in bins]) + " | {'Total':<8}"
+    print(header)
+    print("-" * len(header))
+    
+    for call, bin_data in stats.items():
+        short_call = call.replace("MPI_", "") 
+        row_str = f" {short_call:<13} | "
+        
+        total = 0
+        for b in bins:
+            count = bin_data.get(b, 0)
+            total += count
+            row_str += f"{count:<10} | "
+            
+        row_str += f"{total:<8}"
+        print(row_str)
+        
+    print("="*95 + "\n")
 
 def parse_mpic_file(mpic_filepath, hw_filepath=None):
     if not os.path.exists(mpic_filepath):
         print(f"Error: File '{mpic_filepath}' not found.")
         sys.exit(1)
 
-    # Define struct formats based on standard C sizes (i=4 bytes, d=8 bytes, s=char)
-    # Using '=' to enforce standard size without native padding (which usually aligns with C arrays)
     process_info_fmt = '=i i i i 1024s'
     p2p_small_fmt = '=d i i i i i i'
     p2p_large_fmt = '=d i i i i i i i i i i'
@@ -95,13 +83,19 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
     data = {
         "metadata": {"total_ranks": 0},
         "topology": [],
-        "timeline": []
+        "timeline": [],
+        "statistics": {}
     }
 
     hw_lookup = load_hardware_map(hw_filepath) if hw_filepath else {}
+    
+    # Template for single-pass stats binning
+    bins_template = {
+        "< 128B": 0, "128B - 1KB": 0, "1KB - 64KB": 0, 
+        "64KB - 1MB": 0, "1MB - 16MB": 0, "> 16MB": 0
+    }
 
     with open(mpic_filepath, 'rb') as f:
-        # Read Total Processes (my_size)
         my_size_bytes = f.read(4)
         if not my_size_bytes:
             print("Error: Empty file.")
@@ -109,101 +103,82 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
         
         data["metadata"]["total_ranks"] = struct.unpack('=i', my_size_bytes)[0]
 
-        # Read Process Information (Nodes)
+        # Read Process Information
         for _ in range(data["metadata"]["total_ranks"]):
             proc_bytes = f.read(process_info_size)
             rank, pid, core, chip, hostname_b = struct.unpack(process_info_fmt, proc_bytes)
             hostname = hostname_b.decode('utf-8', errors='ignore').rstrip('\x00')
             
-            # Default to a random scatter if hardware map doesn't exist
             hw_info = hw_lookup.get(hostname, {"x": rank*15, "y": 0, "z": 0})
             
             data["topology"].append({
-                "rank": rank,
-                "pid": pid,
-                "core": core,
-                "chip": chip,
-                "hostname": hostname,
-                "x": hw_info["x"],
-                "y": hw_info["y"],
-                "z": hw_info["z"]
+                "rank": rank, "pid": pid, "core": core, "chip": chip,
+                "hostname": hostname, "x": hw_info["x"], "y": hw_info["y"], "z": hw_info["z"]
             })
 
         # Read Communication Data per Rank
         for _ in range(data["metadata"]["total_ranks"]):
-            # Read Rank ID
             rank_id = struct.unpack('=i', f.read(4))[0]
 
-            # Read Small Messages Header
-            small_header = f.read(24).decode('utf-8', errors='ignore').rstrip('\x00')
+            f.read(24) # Skip Header
             num_small = struct.unpack('=i', f.read(4))[0]
 
-            # Read Small Messages
-            for _ in range(num_small):
-                sm_bytes = f.read(small_size)
-                time_val, msg_id, mtype, sender, receiver, count, bytes_vol = struct.unpack(p2p_small_fmt, sm_bytes)
+            if num_small > 0:
+                # Read entire block of messages into memory at once
+                small_buffer = f.read(num_small * small_size)
                 
-                data["timeline"].append({
-                    "time": time_val,
-                    "event_id": msg_id,
-                    "rank_recording": rank_id,
-                    "call": MESSAGE_TYPES.get(mtype, f"UNKNOWN_{mtype}"),
-                    "sender": sender,
-                    "receiver": receiver,
-                    "count": count,
-                    "bytes": bytes_vol,
-                    "category": "point-to-point"
-                })
+                # iter_unpack handles the loop logic in C, drastically speeding up execution
+                for time_val, msg_id, mtype, sender, receiver, count, bytes_vol in struct.iter_unpack(p2p_small_fmt, small_buffer):
+                    call_name = MESSAGE_TYPES.get(mtype, f"UNKNOWN_{mtype}")
+                    
+                    data["timeline"].append({
+                        "time": time_val, "event_id": msg_id, "rank_recording": rank_id,
+                        "call": call_name, "sender": sender, "receiver": receiver,
+                        "count": count, "bytes": bytes_vol, "category": "point-to-point"
+                    })
+                    
+                    # Inline Stats Calculation
+                    if call_name not in data["statistics"]:
+                        data["statistics"][call_name] = dict(bins_template)
+                        
+                    if bytes_vol < 128: data["statistics"][call_name]["< 128B"] += 1
+                    elif bytes_vol < 1024: data["statistics"][call_name]["128B - 1KB"] += 1
+                    elif bytes_vol < 65536: data["statistics"][call_name]["1KB - 64KB"] += 1
+                    elif bytes_vol < 1048576: data["statistics"][call_name]["64KB - 1MB"] += 1
+                    elif bytes_vol < 16777216: data["statistics"][call_name]["1MB - 16MB"] += 1
+                    else: data["statistics"][call_name]["> 16MB"] += 1
 
-            # Read Large Messages Header
-            large_header = f.read(24).decode('utf-8', errors='ignore').rstrip('\x00')
+
+            f.read(24) # Skip Header
             num_large = struct.unpack('=i', f.read(4))[0]
 
-            # Read Large Messages
-            for _ in range(num_large):
-                lg_bytes = f.read(large_size)
-                (time_val, msg_id, mtype, 
-                 s1, r1, c1, b1, 
-                 s2, r2, c2, b2) = struct.unpack(p2p_large_fmt, lg_bytes)
-
-                call_name = MESSAGE_TYPES.get(mtype, f"UNKNOWN_{mtype}")
+            if num_large > 0:
+                large_buffer = f.read(num_large * large_size)
                 
-                # Split large data structs (like Sendrecv or Gather) into two distinct timeline events
-                # so the visualizer can draw both halves of the data movement independently
-                data["timeline"].extend([
-                    {
-                        "time": time_val,
-                        "event_id": msg_id,
-                        "rank_recording": rank_id,
-                        "call": call_name,
-                        "sender": s1,
-                        "receiver": r1,
-                        "count": c1,
-                        "bytes": b1,
-                        "category": "collective_part_1"
-                    },
-                    {
-                        "time": time_val,
-                        "event_id": msg_id,
-                        "rank_recording": rank_id,
-                        "call": call_name,
-                        "sender": s2,
-                        "receiver": r2,
-                        "count": c2,
-                        "bytes": b2,
-                        "category": "collective_part_2"
-                    }
-                ])
+                for time_val, msg_id, mtype, s1, r1, c1, b1, s2, r2, c2, b2 in struct.iter_unpack(p2p_large_fmt, large_buffer):
+                    call_name = MESSAGE_TYPES.get(mtype, f"UNKNOWN_{mtype}")
+                    
+                    data["timeline"].extend([
+                        {"time": time_val, "event_id": msg_id, "rank_recording": rank_id, "call": call_name, "sender": s1, "receiver": r1, "count": c1, "bytes": b1, "category": "collective_part_1"},
+                        {"time": time_val, "event_id": msg_id, "rank_recording": rank_id, "call": call_name, "sender": s2, "receiver": r2, "count": c2, "bytes": b2, "category": "collective_part_2"}
+                    ])
+                    
+                    # Inline Stats Calculation for both halves of the payload
+                    if call_name not in data["statistics"]:
+                        data["statistics"][call_name] = dict(bins_template)
+                        
+                    for b_vol in (b1, b2):
+                        if b_vol < 128: data["statistics"][call_name]["< 128B"] += 1
+                        elif b_vol < 1024: data["statistics"][call_name]["128B - 1KB"] += 1
+                        elif b_vol < 65536: data["statistics"][call_name]["1KB - 64KB"] += 1
+                        elif b_vol < 1048576: data["statistics"][call_name]["64KB - 1MB"] += 1
+                        elif b_vol < 16777216: data["statistics"][call_name]["1MB - 16MB"] += 1
+                        else: data["statistics"][call_name]["> 16MB"] += 1
 
-    # Sort all events chronologically so the visualizer reads them in exact order
+    # Sort all events chronologically
     data["timeline"].sort(key=lambda x: x["time"])
 
-    # --- NEW: Calculate Summary Statistics ---
-    # Attach the binned message counts to the payload
-    data["statistics"] = calculate_message_stats(data["timeline"])
-    # -----------------------------------------
-
-    # Attach the full hardware blueprint so the visualiser can draw idle nodes
+    # Attach the hardware blueprint
     if hw_filepath and os.path.exists(hw_filepath):
         with open(hw_filepath, 'r') as f:
             data["hardware_blueprint"] = json.load(f)
@@ -220,42 +195,6 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
 
     # Print the terminal summary table
     print_summary_table(data["statistics"])
-
-def print_summary_table(stats):
-    """Prints a formatted ASCII table of the message statistics to the terminal."""
-    print("\n" + "="*85)
-    print(" MPI COMMUNICATION SUMMARY")
-    print("="*85)
-    
-    if not stats:
-        print(" No communication events found.")
-        print("="*85 + "\n")
-        return
-
-    # Define columns
-    bins = ["< 128B", "128B < 1KB", "1KB - 64KB", "64KB - 1MB", "1MB - 16MB", "> 16MB"]
-    
-    # Print Header
-    header = f" {'MPI Call':<13} | " + " | ".join([f"{b:<10}" for b in bins]) + " | {'Total':<8}"
-    print(header)
-    print("-" * len(header))
-    
-    # Print Data Rows
-    for call, bin_data in stats.items():
-        # Strip "MPI_" prefix to save space, just like in the visualizer
-        short_call = call.replace("MPI_", "") 
-        row_str = f" {short_call:<13} | "
-        
-        total = 0
-        for b in bins:
-            count = bin_data.get(b, 0)
-            total += count
-            row_str += f"{count:<10} | "
-            
-        row_str += f"{total:<8}"
-        print(row_str)
-        
-    print("="*85 + "\n")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
