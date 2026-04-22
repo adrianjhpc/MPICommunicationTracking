@@ -1,3 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Fira+Code:wght@400;600&display=swap');
+
+body {
+    margin: 0;
+    padding: 0;
+    /* Upgraded to Inter */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #0d1117; 
+    color: #c9d1d9;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.time-display, 
+.stats-panel span, 
+.node-label {
+    font-family: 'Fira Code', monospace;
+    letter-spacing: -0.5px;
+}
+
+.sidebar-header h2 { 
+    color: #58a6ff; 
+    font-size: 1.5rem; 
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
 * {
 *     box-sizing: border-box;
 *         margin: 0;
