@@ -206,8 +206,12 @@ function buildHardwareTopology(nodesData) {
 function renderActiveCommunications() {
     clearLines();
 
+    // Messages happen every ~3 microseconds. A window of 10 microseconds (0.000010) 
+    // is perfect to see 3-4 boxes flying across the gap simultaneously.
+    const DYNAMIC_WINDOW = 0.000010;
+
     const activeEvents = parsedData.timeline.filter(d => 
-        d.time <= currentTime && d.time >= (currentTime - TIME_WINDOW)
+        d.time <= currentTime && d.time >= (currentTime - DYNAMIC_WINDOW)
         && d.sender !== d.receiver 
     );
 
@@ -218,24 +222,10 @@ function renderActiveCommunications() {
         blending: THREE.AdditiveBlending 
     });
 
-    const packetGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+    const packetGeometry = new THREE.BoxGeometry(2.5, 2.5, 2.5);
     const packetMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-    // This prevents the "string of pearls" by ensuring only one interaction 
-    // is rendered per sender/receiver pair at any given time.
-    const activePaths = new Map();
     activeEvents.forEach(event => {
-        const pathKey = `${event.sender}-${event.receiver}`;
-        
-        // If we haven't seen this path yet, or if this event is NEWER than the saved one, save it.
-        // This ensures the animation is driven by the most recent message.
-        if (!activePaths.has(pathKey) || activePaths.get(pathKey).time < event.time) {
-            activePaths.set(pathKey, event);
-        }
-    });
-
-    // Iterate over the unique paths instead of every individual event
-    activePaths.forEach((event, pathKey) => {
         const sender = nodeMap.get(event.sender);
         const receiver = nodeMap.get(event.receiver);
 
@@ -243,32 +233,30 @@ function renderActiveCommunications() {
             const vStart = new THREE.Vector3(sender.x, sender.y, sender.z);
             const vEnd = new THREE.Vector3(receiver.x, receiver.y, receiver.z);
             
-            // Curve Logic
             const distance = vStart.distanceTo(vEnd);
             const vMid = new THREE.Vector3().addVectors(vStart, vEnd).multiplyScalar(0.5);
-            const bulgeAmount = Math.max(20, distance * 0.4); 
             
-            // If sender is a lower number, bulge Right. If higher, bulge Left.
             const laneOffset = (event.sender < event.receiver) ? 1 : -1;
-            
+            const bulgeAmount = Math.max(20, distance * 0.4); 
             vMid.x += bulgeAmount * laneOffset; 
             vMid.z += bulgeAmount * 0.2 * laneOffset; 
 
             const curve = new THREE.QuadraticBezierCurve3(vStart, vMid, vEnd);
             
-            const points = curve.getPoints(20);
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geometry, wireMaterial);
-            linesGroup.add(line);
-           
+            // Only draw the faint wire once per direction to prevent it from glowing too brightly 
+            // when multiple messages are overlapping on the exact same curve.
+            if (event === activeEvents.find(e => e.sender === event.sender)) {
+                const points = curve.getPoints(20);
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, wireMaterial);
+                linesGroup.add(line);
+            }
+            
+            // Flight time now exactly matches our tiny dynamic window
             const ageOfMessage = currentTime - event.time;
+            let progress = ageOfMessage / DYNAMIC_WINDOW;
             
-            // This forces the animation to clear the screen faster before the reply starts
-            const FLIGHT_TIME = TIME_WINDOW * 0.01; 
-            
-            let progress = ageOfMessage / FLIGHT_TIME; 
-            
-            // Only draw the ball if it is currently in flight (progress between 0.0 and 1.0)
+            // Draw every single packet that is currently in flight
             if (progress >= 0 && progress <= 1.0) {
                 const packetPos = curve.getPoint(progress);
                 const packet = new THREE.Mesh(packetGeometry, packetMaterial);
@@ -276,20 +264,18 @@ function renderActiveCommunications() {
                 linesGroup.add(packet);
             }
 
-            // Highlight nodes
             sender.mesh.material.emissive.setHex(0x1f6feb); 
             receiver.mesh.material.emissive.setHex(0x2ea043); 
         }
     });
 
-    // Reset glow for nodes that stopped communicating
     nodeMap.forEach((data, rank) => {
         const isActive = activeEvents.some(e => e.sender === rank || e.receiver === rank);
         if (!isActive) {
             data.mesh.material.emissive.setHex(0x000000);
         }
     });
-}
+}}
 
 function handleManualSeek(event) {
     pausePlayback();

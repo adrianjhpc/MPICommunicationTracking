@@ -16,7 +16,7 @@ int main(int argc, char **argv){
   send_data = 1;
 
   message_size = 1;
-  repeats = 10;
+  repeats = 100;
 
   MPI_Init(&argc, &argv);
   
@@ -38,7 +38,7 @@ int main(int argc, char **argv){
     for (i=0; i<repeats; i++) {
       MPI_Recv(&send_data, message_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
       MPI_Send(&recv_data, message_size, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-   }
+    }
   }
   
   MPI_Finalize();
