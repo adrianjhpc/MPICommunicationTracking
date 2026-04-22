@@ -72,20 +72,31 @@ function initThreeJS() {
     });
 }
 
-function handleFileUpload(event) {
+async function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            parsedData = JSON.parse(e.target.result);
-            initDashboard();
-        } catch (error) {
-            console.error(error);
+    try {
+        let textData;
+        
+        // If it's i compressed format unzip it natively in the browser
+        if (file.name.endsWith('.gz')) {
+            const ds = new DecompressionStream('gzip');
+            const decompressedStream = file.stream().pipeThrough(ds);
+            textData = await new Response(decompressedStream).text();
+        } 
+        // Fallback for older uncompressed .json files
+        else {
+            textData = await file.text();
         }
-    };
-    reader.readAsText(file);
+
+        parsedData = JSON.parse(textData);
+        initDashboard();
+        
+    } catch (error) {
+        console.error("Error parsing file:", error);
+        alert("Failed to load or parse the profile. Check the console for details.");
+    }
 }
 
 function initDashboard() {

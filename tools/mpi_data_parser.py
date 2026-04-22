@@ -2,6 +2,7 @@ import struct
 import json
 import sys
 import os
+import gzip
 
 # --- MPI Message Type Mapping ---
 MESSAGE_TYPES = {
@@ -185,10 +186,14 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
     else:
         data["hardware_blueprint"] = None 
 
-    # Export to JSON
-    output_filename = mpic_filepath.replace(".mpic", "_parsed.json")
-    with open(output_filename, 'w') as out_f:
-        json.dump(data, out_f, indent=2)
+    # Export to Minified GZIP JSON
+    output_filename = mpic_filepath.replace(".mpic", "_parsed.json.gz")
+    
+    # Use gzip.open to compress on the fly
+    # Use separators=(',', ':') to strip all whitespace and newlines from the JSON
+    # Both of these approaches should help us keep the json file size down
+    with gzip.open(output_filename, 'wt', encoding='utf-8') as out_f:
+        json.dump(data, out_f, separators=(',', ':'))
     
     print(f"Parsed {len(data['timeline'])} communication events.")
     print(f"Data saved to {output_filename}")
