@@ -293,49 +293,6 @@ function seekToTime(time) {
     renderActiveCommunications();
 }
 
-function renderActiveCommunications() {
-    clearLines();
-
-    const activeEvents = parsedData.timeline.filter(d => 
-        d.time <= currentTime && d.time >= (currentTime - TIME_WINDOW)
-        && d.sender !== d.receiver 
-    );
-
-    const material = new THREE.LineBasicMaterial({ 
-        color: 0xff7b72, 
-        transparent: true, 
-        opacity: 0.8,
-        linewidth: 2 // Note: WebGL standard limits lines to 1px wide on many systems
-    });
-
-    activeEvents.forEach(event => {
-        const sender = nodeMap.get(event.sender);
-        const receiver = nodeMap.get(event.receiver);
-
-        if (sender && receiver) {
-            const points = [];
-            points.push(new THREE.Vector3(sender.x, sender.y, sender.z));
-            points.push(new THREE.Vector3(receiver.x, receiver.y, receiver.z));
-
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geometry, material);
-            linesGroup.add(line);
-            
-            // Briefly highlight the sender and receiver nodes
-            sender.mesh.material.emissive.setHex(0x58a6ff);
-            receiver.mesh.material.emissive.setHex(0x2ea043);
-        }
-    });
-
-    // Reset emissive glow for nodes not communicating
-    nodeMap.forEach((data, rank) => {
-        const isActive = activeEvents.some(e => e.sender === rank || e.receiver === rank);
-        if (!isActive) {
-            data.mesh.material.emissive.setHex(0x222222);
-        }
-    });
-}
-
 function clearLines() {
     while(linesGroup.children.length > 0){ 
         linesGroup.remove(linesGroup.children[0]); 
