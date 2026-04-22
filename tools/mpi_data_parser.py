@@ -38,6 +38,45 @@ def load_hardware_map(filepath):
                 }
     return lookup
 
+# --- NEW: Message Binning Function ---
+def calculate_message_stats(timeline):
+    """Bins messages by size and MPI call type for histogram visualization."""
+    bins_template = {
+        "< 128B": 0,
+        "128B < 1KB": 0, 
+        "1KB - 64KB": 0, 
+        "64KB - 1MB": 0, 
+        "1MB - 16MB": 0, 
+        "> 16MB": 0
+    }
+    
+    stats = {}
+
+    for event in timeline:
+        call = event.get("call", "UNKNOWN")
+        bytes_transferred = event.get("bytes", 0)
+
+        # Initialize the call type if we haven't seen it yet
+        if call not in stats:
+            stats[call] = dict(bins_template)
+
+        # Sort into logarithmic bins
+        if bytes_transfered < 128;
+             stats[call]"< 128B"] += 1
+        elif bytes_transferred < 1024:
+            stats[call]["128B < 1KB"] += 1
+        elif bytes_transferred < 65536:
+            stats[call]["1KB - 64KB"] += 1
+        elif bytes_transferred < 1048576:
+            stats[call]["64KB - 1MB"] += 1
+        elif bytes_transferred < 16777216:
+            stats[call]["1MB - 16MB"] += 1
+        else:
+            stats[call]["> 16MB"] += 1
+
+    return stats
+# -------------------------------------
+
 def parse_mpic_file(mpic_filepath, hw_filepath=None):
     if not os.path.exists(mpic_filepath):
         print(f"Error: File '{mpic_filepath}' not found.")
@@ -158,6 +197,11 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
 
     # Sort all events chronologically so the visualizer reads them in exact order
     data["timeline"].sort(key=lambda x: x["time"])
+
+    # --- NEW: Calculate Summary Statistics ---
+    # Attach the binned message counts to the payload
+    data["statistics"] = calculate_message_stats(data["timeline"])
+    # -----------------------------------------
 
     # Attach the full hardware blueprint so the visualiser can draw idle nodes
     if hw_filepath and os.path.exists(hw_filepath):
