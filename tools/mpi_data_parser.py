@@ -159,7 +159,12 @@ def parse_mpic_file(mpic_filepath, hw_filepath=None):
     # Sort all events chronologically so the visualizer reads them in exact order
     data["timeline"].sort(key=lambda x: x["time"])
 
-    
+    # Attach the full hardware blueprint so the visualiser can draw idle nodes
+    if hw_filepath and os.path.exists(hw_filepath):
+        with open(hw_filepath, 'r') as f:
+            data["hardware_blueprint"] = json.load(f)
+    else:
+        data["hardware_blueprint"] = None 
 
     # Export to JSON
     output_filename = mpic_filepath.replace(".mpic", "_parsed.json")
