@@ -21,6 +21,10 @@ let lastFrameTime = 0;
 let lastDynUpdate = 0;
 let isProcessingFrame = false;
 
+// Raycasting State for click-zoom functionality
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
 // 3D Maps & Caches
 const nodeMap = new Map();  // Maps hostname -> Node Group
 const rankMap = new Map();  // Maps rank ID -> Process Mesh
@@ -111,6 +115,9 @@ function initThreeJS() {
         RIGHT: 'KeyD',
         BOTTOM: 'KeyS'
     }; 
+
+    // Listen for clicks on the 3D canvas
+    renderer.domElement.addEventListener('click', onCanvasClick, false);
 
     const grid = new THREE.GridHelper(1000, 50, 0x30363d, 0x21262d);
     grid.position.y = -10;
@@ -347,6 +354,74 @@ function buildHardwareTopology(topology) {
     controls.target.set(0, centerY, 0);
     controls.update(); // Apply the new camera angle
 }
+
+// ===============
+// CAMERA MOVEMENT
+// ===============
+function onCanvasClick(event) {
+    // Calculate normalized mouse coordinates (-1 to +1) relative to the canvas
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Shoot the raycaster
+    raycaster.setFromCamera(mouse, camera);
+
+    // Find intersections with our nodes
+    const intersects = raycaster.intersectObjects(scene.children, true);
+
+    for (let i = 0; i < intersects.length; i++) {
+        const object = intersects[i].object;
+        
+        // If we clicked a Node Shell or a Rank Box
+        if (object.name === "mpiNode" || object.name === "mpiRank") {
+            const targetPosition = new THREE.Vector3();
+            object.getWorldPosition(targetPosition);
+            
+            flyCameraTo(targetPosition);
+            break; // Stop after finding the first hit
+        }
+    }
+}
+
+function flyCameraTo(targetPos) {
+    // Suspend user controls during the cinematic flight
+    controls.enabled = false;
+
+    // Determine where the camera should end up (e.g., slightly up and pulled back)
+    const cameraOffset = new THREE.Vector3(0, 15, 40);
+    const finalCameraPos = targetPos.clone().add(cameraOffset);
+
+    const startTarget = controls.target.clone();
+    const startCamera = camera.position.clone();
+    
+    const duration = 800; // 800 milliseconds for the flight
+    const startTime = performance.now();
+
+    function animateTransition(time) {
+        let elapsed = time - startTime;
+        let t = elapsed / duration;
+        if (t > 1) t = 1;
+
+        // Apply a smooth "Ease Out" curve
+        const easeT = 1 - Math.pow(1 - t, 3);
+
+        // Interpolate the camera position and where it is looking
+        camera.position.lerpVectors(startCamera, finalCameraPos, easeT);
+        controls.target.lerpVectors(startTarget, targetPos, easeT);
+        
+        if (t < 1) {
+            requestAnimationFrame(animateTransition);
+        } else {
+            // Re-enable controls once we arrive
+            controls.enabled = true;
+            controls.update();
+        }
+    }
+    
+    requestAnimationFrame(animateTransition);
+}
+
 
 // ==========================================
 // PLAYBACK & RENDERING
