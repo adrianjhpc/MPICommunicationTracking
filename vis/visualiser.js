@@ -96,9 +96,9 @@ document.addEventListener("DOMContentLoaded", () => {
 function initThreeJS() {
     const container = document.getElementById("visCanvas");
     scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0d1117, 0.002);
+    scene.fog = new THREE.FogExp2(0x0d1117, 0.001);
 
-    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 2000);
+    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 2000);    
     camera.position.set(0, 100, 300);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -127,9 +127,10 @@ function initThreeJS() {
     grid.position.y = -10;
     scene.add(grid);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Was 0.4
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0); // Was 0.6
     dirLight.position.set(200, 500, 300);
     scene.add(dirLight);
 
@@ -267,7 +268,7 @@ function initDashboard() {
     // Clear old scene
     const objectsToRemove = [];
     scene.traverse(child => {
-        if (child.name === "mpiNode" || child.name === "cabinetBox" || child.name === "mpiRank") {
+        if (child.name === "mpiNode" || child.name === "mpiNodeFill" || child.name === "cabinetBox" || child.name === "mpiRank") {
             objectsToRemove.push(child);
         }
     });
@@ -312,33 +313,38 @@ function initDashboard() {
 function buildHardwareTopology(topology) {
     const nodesMap = {};
 
-    // Draw every node from the hardware blueprint (the empty shells)
+    // PRE-FILL: Read Blueprint (including hardware specs)
     if (parsedData.hardware_blueprint) {
         const bp = parsedData.hardware_blueprint;
-        // Safely handle both Array and Object blueprint structures
-        if (Array.isArray(bp)) {
-            bp.forEach(node => {
-                const host = node.hostname || node.id || "unknown";
-                nodesMap[host] = { ranks: [], x: node.x || 0, y: node.y || 0, z: node.z || 0 };
-            });
-        } else {
-            Object.keys(bp).forEach(host => {
-                const node = bp[host];
-                nodesMap[host] = { ranks: [], x: node.x || 0, y: node.y || 0, z: node.z || 0 };
-            });
-        }
+        Object.keys(bp).forEach(host => {
+            const node = bp[host];
+            nodesMap[host] = { 
+                ranks: [], 
+                x: node.x || 0, 
+                y: node.y || 0, 
+                z: node.z || 0,
+                // Extract the new hardware specs, default to 1 if missing
+                cpus: node.cpus || 1,             
+                coresPerCpu: node.cores_per_cpu || 1 
+            };
+        });
     }
 
-    // Add the scheduled MPI ranks from the active topology
+    // POPULATE: Add active MPI ranks and their physical locations
     topology.forEach(proc => {
         const host = proc.hostname || "unknown";
         if (!nodesMap[host]) {
-            nodesMap[host] = { ranks: [], x: proc.x || 0, y: proc.y || 0, z: proc.z || 0 };
+            nodesMap[host] = { ranks: [], x: proc.x || 0, y: proc.y || 0, z: proc.z || 0, cpus: 1, coresPerCpu: 1 };
         }
-        
-        // Only push if there is a valid rank ID (ignores 'null' placeholders)
-        if (proc.rank !== undefined && proc.rank !== null && !nodesMap[host].ranks.includes(proc.rank)) {
-            nodesMap[host].ranks.push(proc.rank);
+        if (proc.rank !== undefined && proc.rank !== null) {
+            // Check if this rank is already in the array
+            if (!nodesMap[host].ranks.find(r => r.id === proc.rank)) {
+                nodesMap[host].ranks.push({
+                    id: proc.rank,
+                    chip: proc.chip !== undefined ? proc.chip : 0,
+                    core: proc.core !== undefined ? proc.core : nodesMap[host].ranks.length // Fallback
+                });
+            }
         }
     });
 
@@ -346,15 +352,16 @@ function buildHardwareTopology(topology) {
     const totalNodes = Object.keys(nodesMap).length;
     let maxY = 0;
 
-    // Create the Nodes and Rank Blocks in 3D
-    for (const [hostname, data] of Object.entries(nodesMap)) {
+    // BUILD THE 3D SCENE
+    Object.keys(nodesMap).forEach(hostname => {
+        const data = nodesMap[hostname];
         const nodeGroup = new THREE.Group();
 
         let posX = data.x;
         let posY = data.y;
         let posZ = data.z;
 
-        // Vertical Tower Override (Stacks them if coordinates are flat 0,0,0)
+        // Vertical Tower Override
         if (posY === 0 && posZ === 0 && posX === 0) {
             posX = 0;
             posY = nodeIndex * 15;
@@ -364,69 +371,112 @@ function buildHardwareTopology(topology) {
         if (posY > maxY) maxY = posY;
         nodeGroup.position.set(posX, posY, posZ);
 
-        // The Hardware Node Shell
-        const shellGeo = new THREE.BoxGeometry(10, 10, 10);
-        const shellMat = new THREE.MeshPhysicalMaterial({
-            color: 0x8b949e, transparent: true, opacity: 0.1, wireframe: true
-        });
-        const shellMesh = new THREE.Mesh(shellGeo, shellMat);
+        // --- OUTER NODE SHELL ---
+        const boxGeo = new THREE.BoxGeometry(10, 10, 10);
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x58a6ff, transparent: true, opacity: 0.6 });
+        const shellMesh = new THREE.LineSegments(edges, lineMat);
         shellMesh.name = "mpiNode";
         nodeGroup.add(shellMesh);
 
-        // Draw individual Process Ranks inside the Node (Skipped if unused!)
-        const rankCount = data.ranks.length;
-        if (rankCount > 0) {
-            const cols = Math.ceil(Math.sqrt(rankCount));
-            const spacing = 8 / cols; 
-            let rIdx = 0;
+        const fillGeo = new THREE.BoxGeometry(9.8, 9.8, 9.8);
+        const fillMat = new THREE.MeshBasicMaterial({ color: 0x161b22, transparent: true, opacity: 0.9 });
+        const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+        fillMesh.name = "mpiNodeFill";
+        nodeGroup.add(fillMesh);
 
-            data.ranks.forEach(rankId => {
-                const row = Math.floor(rIdx / cols);
-                const col = rIdx % cols;
-                
-                const rankGeo = new THREE.BoxGeometry(spacing*0.8, spacing*0.8, spacing*0.8);
-                const rankMat = new THREE.MeshLambertMaterial({ 
-                    color: 0x30363d, emissive: 0x000000, emissiveIntensity: 0 
-                });
-                const rankMesh = new THREE.Mesh(rankGeo, rankMat);
-                rankMesh.name = "mpiRank";
-                
-                rankMesh.position.set(
-                    (col * spacing) - 4 + (spacing/2),
-                    (row * spacing) - 4 + (spacing/2),
-                    0
-                );
+        // --- CHIP AND CORE LAYOUT ---
+        let numChips = data.cpus;
+        let numCores = data.coresPerCpu;
 
-                nodeGroup.add(rankMesh);
-                rankMap.set(rankId, rankMesh); 
-                rIdx++;
-            });
+        // Bulletproof Auto-Scaling: If the trace file has a rank on a higher chip/core 
+        // than the blueprint expected, dynamically expand the grid to fit it
+        data.ranks.forEach(r => {
+            if (r.chip >= numChips) numChips = r.chip + 1;
+            if (r.core >= numCores) numCores = r.core + 1;
+        });
+
+        // Grid Math for the CPUs (Chips)
+        const chipCols = Math.ceil(Math.sqrt(numChips));
+        const chipRows = Math.ceil(numChips / chipCols);
+        const chipSpacingX = 8.5 / chipCols; // 8.5 leaves a nice margin inside the 10x10 node
+        const chipSpacingY = 8.5 / chipRows;
+
+        // Grid Math for Cores inside a CPU
+        const coreCols = Math.ceil(Math.sqrt(numCores));
+        const coreRows = Math.ceil(numCores / coreCols);
+        const coreSpacingX = (chipSpacingX * 0.9) / coreCols;
+        const coreSpacingY = (chipSpacingY * 0.9) / coreRows;
+        const coreSize = Math.min(coreSpacingX, coreSpacingY) * 0.8; // Leave gaps between cores
+
+        // Loop through CPUs
+        for (let c = 0; c < numChips; c++) {
+            const cRow = Math.floor(c / chipCols);
+            const cCol = c % chipCols;
+            const chipOffsetX = (cCol * chipSpacingX) - 4.25 + (chipSpacingX / 2);
+            const chipOffsetY = (cRow * chipSpacingY) - 4.25 + (chipSpacingY / 2);
+
+            // Draw a physical silicon backplate for the CPU
+            const chipGeo = new THREE.BoxGeometry(chipSpacingX * 0.9, chipSpacingY * 0.9, 0.5);
+            const chipMat = new THREE.MeshBasicMaterial({ color: 0x21262d, transparent: true, opacity: 0.8 });
+            const chipMesh = new THREE.Mesh(chipGeo, chipMat);
+            chipMesh.position.set(chipOffsetX, chipOffsetY, -0.5); // Push back slightly
+            nodeGroup.add(chipMesh);
+
+            // Loop through Cores
+            for (let i = 0; i < numCores; i++) {
+                const iRow = Math.floor(i / coreCols);
+                const iCol = i % coreCols;
+                const coreOffsetX = chipOffsetX + (iCol * coreSpacingX) - (chipSpacingX * 0.45) + (coreSpacingX / 2);
+                const coreOffsetY = chipOffsetY + (iRow * coreSpacingY) - (chipSpacingY * 0.45) + (coreSpacingY / 2);
+
+                const coreGeo = new THREE.BoxGeometry(coreSize, coreSize, coreSize);
+
+                // Check if this specific core slot has an active MPI rank mapped to it
+                const activeRank = data.ranks.find(r => r.chip === c && r.core === i);
+
+                if (activeRank) {
+                    // Active Rank - Ready to be illuminated by the play loop
+                    const rankMat = new THREE.MeshLambertMaterial({ 
+                        color: 0x4b5563, emissive: 0x58a6ff, emissiveIntensity: 0.15 
+                    });
+                    const rankMesh = new THREE.Mesh(coreGeo, rankMat);
+                    rankMesh.name = "mpiRank";
+                    rankMesh.position.set(coreOffsetX, coreOffsetY, 0);
+
+                    nodeGroup.add(rankMesh);
+                    rankMap.set(activeRank.id, rankMesh); 
+                } else {
+                    // Idle Core - Draw a faint empty slot
+                    const idleMat = new THREE.MeshBasicMaterial({ 
+                        color: 0x0d1117, wireframe: true, transparent: true, opacity: 0.5 
+                    });
+                    const idleMesh = new THREE.Mesh(coreGeo, idleMat);
+                    idleMesh.name = "idleCore";
+                    idleMesh.position.set(coreOffsetX, coreOffsetY, 0);
+                    nodeGroup.add(idleMesh);
+                }
+            }
         }
 
         scene.add(nodeGroup);
         nodeMap.set(hostname, nodeGroup);
         nodeIndex++;
-    }
+    });
 
-    // Build the wireframe server rack encapsulating the whole tower
+    // CABINET & AUTO-FRAME
     if (totalNodes > 0) {
         const cabinetGeo = new THREE.BoxGeometry(20, maxY + 20, 20);
-        const cabinetMat = new THREE.MeshBasicMaterial({
-            color: 0x30363d,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.15 // Very faint ghost outline
-        });
-        const cabinetMesh = new THREE.Mesh(cabinetGeo, cabinetMat);
+        const cabEdges = new THREE.EdgesGeometry(cabinetGeo);
+        const cabinetMat = new THREE.LineBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.5 });
+        const cabinetMesh = new THREE.LineSegments(cabEdges, cabinetMat);
         cabinetMesh.name = "cabinetBox";
-        cabinetMesh.position.set(0, maxY / 2, 0); // Center it
+        cabinetMesh.position.set(0, maxY / 2, 0);
         scene.add(cabinetMesh);
     }
 
-    // Centre the camera on the middle of the tower
     const centerY = maxY / 2;
     const distanceToPullBack = Math.max(300, totalNodes * 20);
-
     camera.position.set(0, centerY, distanceToPullBack);
     controls.target.set(0, centerY, 0);
     controls.update(); 
