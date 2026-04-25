@@ -399,8 +399,13 @@ function buildHardwareTopology(topology) {
     const sharedChipMat = new THREE.MeshBasicMaterial({ color: 0x21262d, transparent: true, opacity: 0.8 });
     
     const sharedActiveRankMat = new THREE.MeshLambertMaterial({ color: 0x4b5563, emissive: 0x58a6ff, emissiveIntensity: 0.15 });
-    const sharedIdleCoreMat = new THREE.MeshBasicMaterial({ color: 0x0d1117, wireframe: true, transparent: true, opacity: 0.5 });
-    
+    const sharedIdleCoreMat = new THREE.MeshBasicMaterial({ 
+        color: 0x4b5563, // Lighter slate gray
+        wireframe: true, 
+        transparent: true, 
+        opacity: 0.8     // Boosted visibility
+    });   
+ 
     const sharedCabinetMat = new THREE.LineBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.5 });
 
     // Caches for dynamically sized geometries (since core sizes depend on hardware specs)
@@ -471,7 +476,7 @@ function buildHardwareTopology(topology) {
 
             // Draw Chip Backplate (Using Shared Resources)
             const chipMesh = new THREE.Mesh(geometryCache[cacheKey].chip, sharedChipMat);
-            chipMesh.position.set(chipOffsetX, chipOffsetY, -0.5); 
+            chipMesh.position.set(chipOffsetX, chipOffsetY, 4.0); // Pushed forward to Z = 4.0
             nodeGroup.add(chipMesh);
 
             for (let i = 0; i < numCores; i++) {
@@ -483,17 +488,18 @@ function buildHardwareTopology(topology) {
                 const activeRank = data.ranks.find(r => r.chip === c && r.core === i);
 
                 if (activeRank) {
-                    // Active Rank (Using Shared Resources)
-                    const rankMesh = new THREE.Mesh(geometryCache[cacheKey].core, sharedActiveRankMat);
+                    const uniqueRankMat = sharedActiveRankMat.clone();
+                    
+                    const rankMesh = new THREE.Mesh(geometryCache[cacheKey].core, uniqueRankMat);
                     rankMesh.name = "mpiRank";
-                    rankMesh.position.set(coreOffsetX, coreOffsetY, 0);
+                    rankMesh.position.set(coreOffsetX, coreOffsetY, 4.5); // Pushed forward to Z = 4.5
                     nodeGroup.add(rankMesh);
                     rankMap.set(activeRank.id, rankMesh); 
                 } else {
-                    // Idle Core (Using Shared Resources)
+                    // Idle Cores don't light up dynamically, so they can safely share the material
                     const idleMesh = new THREE.Mesh(geometryCache[cacheKey].core, sharedIdleCoreMat);
                     idleMesh.name = "idleCore";
-                    idleMesh.position.set(coreOffsetX, coreOffsetY, 0);
+                    idleMesh.position.set(coreOffsetX, coreOffsetY, 4.5); // Pushed forward to Z = 4.5
                     nodeGroup.add(idleMesh);
                 }
             }
