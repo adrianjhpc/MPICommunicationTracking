@@ -313,21 +313,58 @@ function initDashboard() {
 function buildHardwareTopology(topology) {
     const nodesMap = {};
 
-    // PRE-FILL: Read Blueprint (including hardware specs)
+    // 1. PRE-FILL: Read Blueprint (Handles both flat lists and nested Cabinet structures)
     if (parsedData.hardware_blueprint) {
         const bp = parsedData.hardware_blueprint;
-        Object.keys(bp).forEach(host => {
-            const node = bp[host];
-            nodesMap[host] = { 
-                ranks: [], 
-                x: node.x || 0, 
-                y: node.y || 0, 
-                z: node.z || 0,
-                // Extract the new hardware specs, default to 1 if missing
-                cpus: node.cpus || 1,             
-                coresPerCpu: node.cores_per_cpu || 1 
-            };
-        });
+
+        // Check if we are using the advanced Cabinet -> Rack -> Node structure
+        if (bp.cabinets && Array.isArray(bp.cabinets)) {
+            bp.cabinets.forEach(cabinet => {
+                const cabX = cabinet.x || 0;
+                const cabZ = cabinet.z || 0;
+
+                if (cabinet.racks && Array.isArray(cabinet.racks)) {
+                    cabinet.racks.forEach(rack => {
+                        // Calculate absolute X/Z based on cabinet + rack offsets
+                        const absoluteX = cabX + (rack.x_offset || 0);
+                        const absoluteZ = cabZ + (rack.z_offset || 0);
+
+                        if (rack.nodes && Array.isArray(rack.nodes)) {
+                            rack.nodes.forEach(node => {
+                                const host = node.hostname;
+                                // Convert the hardware 'slot' into a physical vertical Y coordinate
+                                const absoluteY = (node.slot !== undefined ? node.slot : 0) * 15;
+
+                                nodesMap[host] = { 
+                                    ranks: [], 
+                                    x: absoluteX, 
+                                    y: absoluteY, 
+                                    z: absoluteZ,
+                                    cpus: node.cpus || 1,             
+                                    coresPerCpu: node.cores_per_cpu || 1 
+                                };
+                            });
+                        }
+                    });
+                }
+            });
+        } else {
+            // Fallback for flat dictionary blueprints
+            Object.keys(bp).forEach(host => {
+                const node = bp[host];
+                // Ignore the "cabinets" key if it accidentally bled into a flat map
+                if (host !== "cabinets") { 
+                    nodesMap[host] = { 
+                        ranks: [], 
+                        x: node.x || 0, 
+                        y: node.y || 0, 
+                        z: node.z || 0,
+                        cpus: node.cpus || 1,             
+                        coresPerCpu: node.cores_per_cpu || 1 
+                    };
+                }
+            });
+        }
     }
 
     // POPULATE: Add active MPI ranks and their physical locations
@@ -352,6 +389,23 @@ function buildHardwareTopology(topology) {
     const totalNodes = Object.keys(nodesMap).length;
     let maxY = 0;
 
+    const sharedNodeGeo = new THREE.BoxGeometry(10, 10, 10);
+    const sharedNodeEdges = new THREE.EdgesGeometry(sharedNodeGeo);
+    const sharedNodeMat = new THREE.LineBasicMaterial({ color: 0x58a6ff, transparent: true, opacity: 0.6 });
+
+    const sharedFillGeo = new THREE.BoxGeometry(9.8, 9.8, 9.8);
+    const sharedFillMat = new THREE.MeshBasicMaterial({ color: 0x161b22, transparent: true, opacity: 0.9 });
+
+    const sharedChipMat = new THREE.MeshBasicMaterial({ color: 0x21262d, transparent: true, opacity: 0.8 });
+    
+    const sharedActiveRankMat = new THREE.MeshLambertMaterial({ color: 0x4b5563, emissive: 0x58a6ff, emissiveIntensity: 0.15 });
+    const sharedIdleCoreMat = new THREE.MeshBasicMaterial({ color: 0x0d1117, wireframe: true, transparent: true, opacity: 0.5 });
+    
+    const sharedCabinetMat = new THREE.LineBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.5 });
+
+    // Caches for dynamically sized geometries (since core sizes depend on hardware specs)
+    const geometryCache = {};
+
     // BUILD THE 3D SCENE
     Object.keys(nodesMap).forEach(hostname => {
         const data = nodesMap[hostname];
@@ -372,16 +426,11 @@ function buildHardwareTopology(topology) {
         nodeGroup.position.set(posX, posY, posZ);
 
         // --- OUTER NODE SHELL ---
-        const boxGeo = new THREE.BoxGeometry(10, 10, 10);
-        const edges = new THREE.EdgesGeometry(boxGeo);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x58a6ff, transparent: true, opacity: 0.6 });
-        const shellMesh = new THREE.LineSegments(edges, lineMat);
+        const shellMesh = new THREE.LineSegments(sharedNodeEdges, sharedNodeMat);
         shellMesh.name = "mpiNode";
         nodeGroup.add(shellMesh);
 
-        const fillGeo = new THREE.BoxGeometry(9.8, 9.8, 9.8);
-        const fillMat = new THREE.MeshBasicMaterial({ color: 0x161b22, transparent: true, opacity: 0.9 });
-        const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+        const fillMesh = new THREE.Mesh(sharedFillGeo, sharedFillMat);
         fillMesh.name = "mpiNodeFill";
         nodeGroup.add(fillMesh);
 
@@ -389,69 +438,60 @@ function buildHardwareTopology(topology) {
         let numChips = data.cpus;
         let numCores = data.coresPerCpu;
 
-        // Bulletproof Auto-Scaling: If the trace file has a rank on a higher chip/core 
-        // than the blueprint expected, dynamically expand the grid to fit it
         data.ranks.forEach(r => {
             if (r.chip >= numChips) numChips = r.chip + 1;
             if (r.core >= numCores) numCores = r.core + 1;
         });
 
-        // Grid Math for the CPUs (Chips)
         const chipCols = Math.ceil(Math.sqrt(numChips));
         const chipRows = Math.ceil(numChips / chipCols);
-        const chipSpacingX = 8.5 / chipCols; // 8.5 leaves a nice margin inside the 10x10 node
+        const chipSpacingX = 8.5 / chipCols; 
         const chipSpacingY = 8.5 / chipRows;
 
-        // Grid Math for Cores inside a CPU
         const coreCols = Math.ceil(Math.sqrt(numCores));
         const coreRows = Math.ceil(numCores / coreCols);
         const coreSpacingX = (chipSpacingX * 0.9) / coreCols;
         const coreSpacingY = (chipSpacingY * 0.9) / coreRows;
-        const coreSize = Math.min(coreSpacingX, coreSpacingY) * 0.8; // Leave gaps between cores
+        const coreSize = Math.min(coreSpacingX, coreSpacingY) * 0.8; 
 
-        // Loop through CPUs
+        // Cache the Chip and Core geometries based on their calculated sizes
+        const cacheKey = `${numChips}_${numCores}`;
+        if (!geometryCache[cacheKey]) {
+            geometryCache[cacheKey] = {
+                chip: new THREE.BoxGeometry(chipSpacingX * 0.9, chipSpacingY * 0.9, 0.5),
+                core: new THREE.BoxGeometry(coreSize, coreSize, coreSize)
+            };
+        }
+
         for (let c = 0; c < numChips; c++) {
             const cRow = Math.floor(c / chipCols);
             const cCol = c % chipCols;
             const chipOffsetX = (cCol * chipSpacingX) - 4.25 + (chipSpacingX / 2);
             const chipOffsetY = (cRow * chipSpacingY) - 4.25 + (chipSpacingY / 2);
 
-            // Draw a physical silicon backplate for the CPU
-            const chipGeo = new THREE.BoxGeometry(chipSpacingX * 0.9, chipSpacingY * 0.9, 0.5);
-            const chipMat = new THREE.MeshBasicMaterial({ color: 0x21262d, transparent: true, opacity: 0.8 });
-            const chipMesh = new THREE.Mesh(chipGeo, chipMat);
-            chipMesh.position.set(chipOffsetX, chipOffsetY, -0.5); // Push back slightly
+            // Draw Chip Backplate (Using Shared Resources)
+            const chipMesh = new THREE.Mesh(geometryCache[cacheKey].chip, sharedChipMat);
+            chipMesh.position.set(chipOffsetX, chipOffsetY, -0.5); 
             nodeGroup.add(chipMesh);
 
-            // Loop through Cores
             for (let i = 0; i < numCores; i++) {
                 const iRow = Math.floor(i / coreCols);
                 const iCol = i % coreCols;
                 const coreOffsetX = chipOffsetX + (iCol * coreSpacingX) - (chipSpacingX * 0.45) + (coreSpacingX / 2);
                 const coreOffsetY = chipOffsetY + (iRow * coreSpacingY) - (chipSpacingY * 0.45) + (coreSpacingY / 2);
 
-                const coreGeo = new THREE.BoxGeometry(coreSize, coreSize, coreSize);
-
-                // Check if this specific core slot has an active MPI rank mapped to it
                 const activeRank = data.ranks.find(r => r.chip === c && r.core === i);
 
                 if (activeRank) {
-                    // Active Rank - Ready to be illuminated by the play loop
-                    const rankMat = new THREE.MeshLambertMaterial({ 
-                        color: 0x4b5563, emissive: 0x58a6ff, emissiveIntensity: 0.15 
-                    });
-                    const rankMesh = new THREE.Mesh(coreGeo, rankMat);
+                    // Active Rank (Using Shared Resources)
+                    const rankMesh = new THREE.Mesh(geometryCache[cacheKey].core, sharedActiveRankMat);
                     rankMesh.name = "mpiRank";
                     rankMesh.position.set(coreOffsetX, coreOffsetY, 0);
-
                     nodeGroup.add(rankMesh);
                     rankMap.set(activeRank.id, rankMesh); 
                 } else {
-                    // Idle Core - Draw a faint empty slot
-                    const idleMat = new THREE.MeshBasicMaterial({ 
-                        color: 0x0d1117, wireframe: true, transparent: true, opacity: 0.5 
-                    });
-                    const idleMesh = new THREE.Mesh(coreGeo, idleMat);
+                    // Idle Core (Using Shared Resources)
+                    const idleMesh = new THREE.Mesh(geometryCache[cacheKey].core, sharedIdleCoreMat);
                     idleMesh.name = "idleCore";
                     idleMesh.position.set(coreOffsetX, coreOffsetY, 0);
                     nodeGroup.add(idleMesh);
